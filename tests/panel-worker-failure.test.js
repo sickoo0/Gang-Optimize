@@ -57,9 +57,19 @@ worker.onmessage({data:{type:'result',plan:prior}});
 assert.equal(scrollRoot.scrollTop,650,'calculation result keeps the CEP panel at its prior scroll position');
 assert.equal(saved.scrollTop,650,'the viewport position is saved for a possible CEP reload');
 assert.match(get('status').textContent,/Planned/);
-// A persisted proposal from the former multi-artboard optimizer cannot be
-// offered for generation after a CEP reload. Its imported PDFs remain intact.
-const stale={...prior,id:'obsolete-two-sheet-plan',sheetCount:2,sheets:[prior.sheets[0],prior.sheets[0]]};
+
+// A worker that has already sent its error response must not be terminated
+// synchronously from inside its own message callback (CEP CEF can crash there).
+let errorWorker,terminatedAfterReply=false;
+context.Worker=class{constructor(){errorWorker=this;}postMessage(){}terminate(){terminatedAfterReply=true;}};
+get('optimize').handlers.click();
+errorWorker.onmessage({data:{type:'error',message:'The order cannot fit on one sheet.'}});
+assert.match(get('status').textContent,/The order cannot fit on one sheet/);
+assert.equal(terminatedAfterReply,false,'finished worker is detached rather than terminated inside its reply callback');
+assert.equal(saved.lastOptimizationError,'The order cannot fit on one sheet.');
+// A persisted multi-sheet proposal is rejected after the single-sheet rule
+// changes. Its imported PDFs and other valid proposals remain.
+const stale={...prior,id:'obsolete-uncuttable-plan',sheetCount:2,sheets:[prior.sheets[0],{...prior.sheets[0],index:1,cuts:[]}]};
 const elements2=new Map(),scrollRoot2={scrollTop:0,scrollLeft:0};
 const get2=id=>{if(!elements2.has(id))elements2.set(id,new Element(id));return elements2.get(id);};
 for(const [id,value] of Object.entries({sheetW:700,sheetH:500,edge:20,inset:5,optimizationMode:'utilization',overproductionCap:'0',customOverproduction:'0'}))get2(id).value=String(value);
@@ -80,5 +90,5 @@ assert.equal(get2('metricSheets').textContent,1);
 assert.equal(restoredSnapshot.latest.sheetCount,1);
 assert.equal(restoredSnapshot.jobs.length,4);
 assert.equal(restoredSnapshot.proposals.length,1);
-assert.match(get2('status').textContent,/previous layout had no verified guillotine cut sequence/);
+assert.match(get2('status').textContent,/previous layout did not meet the one-sheet requirement/);
 console.log('PASS: worker failure retains jobs/proposals and a successful calculation preserves scroll position');

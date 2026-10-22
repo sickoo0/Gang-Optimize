@@ -7,7 +7,12 @@
 #target illustrator
 #include "geometry.js"
 #include "cutting.js"
-var Bytebase = Bytebase || {};
+// evalFile runs this file in its own scope during Reload Panel. Reuse the
+// Illustrator-global namespace explicitly so refreshed methods replace stale
+// handlers instead of remaining trapped in the evalFile scope.
+var Bytebase = $.global.Bytebase || {};
+$.global.Bytebase = Bytebase;
+Bytebase.__hostBuild = 'single-sheet-v1';
 (function(){
   function mm(points){ return BytebaseGeometry.ptToMm(points); }
   function pt(mmValue){ return BytebaseGeometry.mmToPt(mmValue); }
@@ -45,10 +50,12 @@ var Bytebase = Bytebase || {};
   function validateLayout(layout){
     var s=layout.settings, workW=Number(s.sheetW)-2*Number(s.edge), workH=Number(s.sheetH)-2*Number(s.edge);
     if(!(workW>0&&workH>0&&Number(s.inset)>=0))throw Error('Invalid sheet or cut margin settings');
-    if(layout.sheets.length!==1||!BytebaseCutting.verifyGuillotineCuts(s,layout.sheets[0].placements,layout.sheets[0].cuts))
-      throw Error('Layout has no valid guillotine cut sequence. Recalculate before creating an Illustrator document.');
+    if(layout.sheets.length!==1||layout.sheetCount!==1)
+      throw Error('The layout must contain exactly one verified gang sheet. Recalculate before creating an Illustrator document.');
     for(var si=0;si<layout.sheets.length;si++){
       var ps=layout.sheets[si].placements||[];
+      if(!BytebaseCutting.verifyGuillotineCuts(s,ps,layout.sheets[si].cuts))
+        throw Error('Sheet '+(si+1)+' has no valid guillotine cut sequence. Recalculate before creating an Illustrator document.');
       for(var i=0;i<ps.length;i++){
         var p=ps[i], inset=Number(p.inset), aw=Number(p.artworkW), ah=Number(p.artworkH);
         if(!isFinite(p.x)||!isFinite(p.y)||!isFinite(p.w)||!isFinite(p.h)||
@@ -144,7 +151,7 @@ var Bytebase = Bytebase || {};
     return safeAction(function(){
       var request=input(encoded), layout=request.layout;
       if(!layout || !layout.sheets || !layout.sheets.length || !layout.settings)throw Error('Invalid layout data');
-      if(layout.sheets.length!==1||layout.sheetCount!==1)throw Error('Only one-artboard layouts can be created. Recalculate the layout.');
+      if(layout.sheets.length!==1||layout.sheetCount!==1)throw Error('The layout must contain exactly one verified gang sheet. Recalculate the layout.');
       var s=layout.settings;
       validateLayout(layout);
       var w=pt(s.sheetW),h=pt(s.sheetH),tmp=null,doc=null;
@@ -184,8 +191,7 @@ var Bytebase = Bytebase || {};
         coordinateSystemChanged=true;
         var srcLayer=doc.layers[0];srcLayer.name='BYTEBASE - LINKED PDF ARTWORK';
         var ab0=doc.artboards[0];ab0.artboardRect=[0,h,w,0];
-        var boardRects=[];
-        for(var ai=0;ai<layout.sheets.length;ai++)boardRects.push(doc.artboards[ai].artboardRect);
+        var boardRects=[ab0.artboardRect];
         var placedCount=0,actualBoundsBySheet=[];
         for(var si=0;si<layout.sheets.length;si++){
           var board=boardRects[si];

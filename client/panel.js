@@ -3,7 +3,12 @@
   'use strict';
   var $ = function(id){return document.getElementById(id);};
   var isCEP = !!(window.__adobe_cep__ && window.__adobe_cep__.evalScript);
-  var jobs = [], latest = null, proposals = [], selectedSheet = 0, demoMode = false;
+  var jobs = [], latest = null, proposals = [], selectedSheet = 0, demoMode = false,lastOptimizationError=null;
+  var lastErrorStorageKey='com.bytebase.gangoptimizer.lastOptimizationError';
+  function storeLastOptimizationError(message){
+    try{if(message)window.localStorage.setItem(lastErrorStorageKey,String(message));else window.localStorage.removeItem(lastErrorStorageKey);}catch(e){}
+  }
+  function readLastOptimizationError(){try{return window.localStorage.getItem(lastErrorStorageKey)||null;}catch(e){return null;}}
   var optimizationWorker=null,optimizationToken=0,optimizationTimer=null;
   var optimizeButtonHTML;
   var sessionKey=window.BytebaseSession;
@@ -59,7 +64,7 @@
     var ok=sessionKey&&sessionKey.save(store,{jobs:jobs,latest:latest,proposals:proposals,selectedSheet:selectedSheet,
       scrollTop:viewport.top,appScrollTop:viewport.appTop,
       settings:settings(),optimizationMode:$('optimizationMode').value,overproductionCap:$('overproductionCap').value,
-      customOverproduction:$('customOverproduction').value});
+      customOverproduction:$('customOverproduction').value,lastOptimizationError:lastOptimizationError});
     if(window.console&&console.info)console.info('[BYTEBASE session] saved',{reason:reason,jobs:jobs.length,hasLayout:!!latest,selectedSheet:selectedSheet,ok:!!ok});
     return !!ok;
   }
@@ -70,6 +75,12 @@
   function restoreSession(){
     var saved=sessionKey&&sessionKey.load(sessionStore());if(!saved)return false;
     jobs=saved.jobs;latest=saved.latest;proposals=saved.proposals;selectedSheet=saved.selectedSheet;demoMode=false;
+    lastOptimizationError=saved.lastOptimizationError||readLastOptimizationError();
+    if(saved.migratedOptimizerDefaults){
+      // A version 1 layout was calculated with the old cap and objective.
+      // Keep its imported jobs, but require a fresh preview under auto mode.
+      latest=null;proposals=[];lastOptimizationError=null;storeLastOptimizationError(null);
+    }
     // Older sessions have no proven straight-cut sequence. Keep their jobs and
     // settings, but never offer an uncuttable layout for generation.
     proposals=proposals.filter(cuttable);
@@ -91,9 +102,13 @@
     renderJobs();renderPreview();
     restoreScroll({top:saved.scrollTop||0,left:0,appTop:saved.appScrollTop||0});
     if(window.console&&console.info)console.info('[BYTEBASE session] restored',{jobs:jobs.length,hasLayout:!!latest,savedAt:saved.savedAt});
-    setStatus(replacedObsolete?'Restored '+jobs.length+' PDF(s). The previous layout had no verified guillotine cut sequence; recalculate before creating.':
-      'Restored '+jobs.length+' imported PDF(s) and '+(latest?'the calculated layout':'working file data')+' from this CEP session.',replacedObsolete?'error':'success');
+    setStatus(replacedObsolete?'Restored '+jobs.length+' PDF(s). The previous layout did not meet the one-sheet requirement; recalculate before creating.':
+      saved.migratedOptimizerDefaults?'Restored '+jobs.length+' PDF(s). Optimizer defaults were updated; click Calculate layout to create a fresh preview.':
+      latest?'Restored '+jobs.length+' imported PDF(s) and the calculated layout from this CEP session.':
+      lastOptimizationError?'Last calculation failed: '+lastOptimizationError:
+      'Restored '+jobs.length+' imported PDF(s) and working file data. Click Calculate layout to create a preview.',replacedObsolete||lastOptimizationError?'error':'success');
     if(replacedObsolete)saveSession('obsolete uncuttable layout removed');
+    else if(saved.migratedOptimizerDefaults)saveSession('automatic optimizer defaults upgraded');
     return true;
   }
   var palette = ['#68a1c1','#e2a358','#8cc5af','#c989b4','#90a0cd','#aebf77','#db9b8f','#78baba'];
@@ -156,7 +171,7 @@
       var path=extensionHostPath(),encoded=encodeURIComponent(path);
       var expression='(function(){try{var f=new File(decodeURIComponent('+JSON.stringify(encoded)+'));'+
         'if(!f.exists)throw Error("host.jsx is missing");$.evalFile(f);'+
-        'if(typeof Bytebase==="undefined"||typeof Bytebase.createLayout!=="function")throw Error("host.jsx did not initialize Bytebase");'+
+        'if(!$.global.Bytebase||typeof $.global.Bytebase.createLayout!=="function"||$.global.Bytebase.__hostBuild!=="single-sheet-v1")throw Error("host.jsx did not refresh the Illustrator-global handler");'+
         'return "BYTEBASE_RELOAD_OK";}catch(e){return "BYTEBASE_RELOAD_ERROR: "+String(e.message||e)+" (line "+(e.line||"?")+")";}})()';
       var completed=false,timer=setTimeout(function(){
         if(completed)return;completed=true;button.disabled=false;
@@ -180,20 +195,27 @@
     }catch(error){if(typeof timer!=='undefined'&&timer)clearTimeout(timer);button.disabled=false;
       setStatus('Reload stopped: '+error.message+' Session data is preserved.','error');}
   }
-  function stopOptimization(){
+  function stopOptimization(workerFinished){
     optimizationToken++;
     if(optimizationTimer){clearTimeout(optimizationTimer);optimizationTimer=null;}
-    if(optimizationWorker){optimizationWorker.terminate();optimizationWorker=null;}
+    if(optimizationWorker){var finishedWorker=optimizationWorker;optimizationWorker=null;
+      if(workerFinished){finishedWorker.onmessage=null;finishedWorker.onerror=null;finishedWorker.onmessageerror=null;}
+      else finishedWorker.terminate();
+    }
     if($('optimizationProgress'))$('optimizationProgress').hidden=true;
     if($('optimize')){$('optimize').disabled=false;if(optimizeButtonHTML)$('optimize').innerHTML=optimizeButtonHTML;}
   }
   function invalidate() {
     stopOptimization();
+    lastOptimizationError=null;
+    storeLastOptimizationError(null);
     latest=null;selectedSheet=0;
     $('layoutType').textContent='Guillotine cutting';
     $('create').disabled=true; $('metricSheets').textContent='–';$('metricCopies').textContent='–';$('metricUsage').textContent='–';
     $('prev').disabled=true;$('next').disabled=true;$('sheetIndex').textContent='– / –';
-    if($('sheetSummaries'))$('sheetSummaries').innerHTML='';if($('proposals'))$('proposals').innerHTML='';proposals=[];renderJobs();renderPreview();saveSession('layout invalidated or inputs changed');
+    if($('sheetSummaries'))$('sheetSummaries').innerHTML='';if($('proposals'))$('proposals').innerHTML='';proposals=[];renderJobs();renderPreview();
+    setStatus('Inputs changed. Calculate layout to preview the current orders and settings.');
+    saveSession('layout invalidated or inputs changed');
   }
   function renderJobs() {
     $('jobs').innerHTML='';
@@ -229,9 +251,10 @@
       var pp=planned[j.id];
       if(pp){
         var details=document.createElement('details');details.className='job-plan';
-        var summary=document.createElement('summary');summary.textContent='Production details · Gang '+(pp.sheetIndex+1);details.appendChild(summary);
+        var summary=document.createElement('summary');summary.textContent='Production details · Gang '+
+          (pp.sheetIndices&&pp.sheetIndices.length>1?pp.sheetIndices.map(function(index){return index+1;}).join(', '):(pp.sheetIndex+1));details.appendChild(summary);
         var detail=document.createElement('div');detail.className='job-plan-values';
-        [['Copies / sheet',pp.copiesPerSheet],['Printing runs',pp.printingRuns],['Produced',pp.producedQuantity],['Overproduction',pp.overproduction]].forEach(function(pair){
+        [[pp.sheetIndices&&pp.sheetIndices.length>1?'Copies / run across sheets':'Copies / sheet',pp.copiesPerSheet],['Printing runs',pp.printingRuns],['Produced',pp.producedQuantity],['Overproduction',pp.overproduction]].forEach(function(pair){
           var item=document.createElement('span');item.textContent=pair[0]+': '+pair[1];detail.appendChild(item);
         });details.appendChild(detail);card.appendChild(details);
       }
@@ -294,26 +317,39 @@
     invalidate();renderJobs();setStatus('Demo data loaded. You can test packing, but cannot create a document with fake PDFs.');
   });
   function overproductionLimit(){
+    if($('overproductionCap').value==='auto')return window.BytebaseProduction.automaticOverproductionCap(jobs);
     if($('overproductionCap').value!=='custom')return Number($('overproductionCap').value);
     var custom=num($('customOverproduction').value);
     if(!isFinite(custom)||custom<0||custom>1000)throw Error('Enter a custom per-job overproduction cap from 0% to 1000%.');
     return custom;
   }
+  function oneSheetAreaBound(config){
+    var settings=config.settings,jobs=config.jobs,maxRuns=Infinity;
+    jobs.forEach(function(job){maxRuns=Math.min(maxRuns,Math.floor(Number(job.orderQ)*(1+config.maxOverproductionPct/100)+1e-9));});
+    maxRuns=Math.max(1,maxRuns);
+    var minimumArea=0;
+    jobs.forEach(function(job){minimumArea+=Math.ceil(Number(job.orderQ)/maxRuns)*
+      (Number(job.width)+2*Number(settings.inset))*(Number(job.height)+2*Number(settings.inset));});
+    var availableArea=(Number(settings.sheetW)-2*Number(settings.edge))*(Number(settings.sheetH)-2*Number(settings.edge));
+    return {minimumArea:minimumArea,availableArea:availableArea};
+  }
   function showProgress(progress){
     $('optimizationProgress').hidden=false;
     var completed=Number(progress.completed)||0,total=Number(progress.total)||0;
     $('progressBar').max=Math.max(1,total);$('progressBar').value=Math.min(completed,total);
-    var phase=progress.phase==='packing'?'Packing layouts':progress.phase==='refining'?'Comparing per-sheet run counts':progress.phase==='complete'?'Finishing layout':'Preparing search';
+    var phase=progress.phase==='packing'?'Packing layouts':progress.phase==='refining'?'Comparing per-sheet run counts':
+      progress.phase==='packing-order'?'Reducing leftover gaps':progress.phase==='complete'?'Finishing layout':'Preparing search';
     $('progressLabel').textContent=phase+(total?' · '+completed+' / '+total:'');
     setStatus(phase+(total?' ('+completed+'/'+total+')':''));
   }
   function finishOptimization(p,requestId){
     if(requestId!==optimizationToken)return;
     if(!p||!Array.isArray(p.jobs)||!cuttable(p))
-      return failOptimization(Error('Optimizer did not return one artboard with a verified guillotine cut sequence.'),requestId);
+      return failOptimization(Error('Optimizer did not return verified guillotine cut sequences for every sheet.'),requestId);
     var viewport=captureScroll();
     var previous={latest:latest,proposals:proposals,selectedSheet:selectedSheet};
     try{
+    lastOptimizationError=null;storeLastOptimizationError(null);
     latest=p;selectedSheet=0;proposals=(p.proposals||[]).filter(cuttable);
     $('metricSheets').textContent=p.sheetCount;$('metricCopies').textContent=p.totalCopies;$('metricUsage').textContent=p.areaPct+'%';
     $('create').disabled=demoMode||!isCEP||jobs.some(function(j){return !j.filePath||!isFinite(j.width)||!isFinite(j.height);});
@@ -326,48 +362,67 @@
     restoreScroll(viewport);
     }catch(error){latest=previous.latest;proposals=previous.proposals;selectedSheet=previous.selectedSheet;restoreScroll(viewport);throw error;}
   }
-  function failOptimization(error,requestId){
+  function failOptimization(error,requestId,workerFinished){
     if(requestId!==optimizationToken)return;
     var viewport=captureScroll();
     logOptimization('error',{message:error&&error.message?error.message:String(error),stack:error&&error.stack?error.stack:''});
-    stopOptimization();restoreScroll(viewport);saveSession('optimization failed; prior layout retained');
-    setStatus('Calculation failed: '+(error&&error.message?error.message:String(error)),'error');
+    stopOptimization(!!workerFinished);restoreScroll(viewport);lastOptimizationError=error&&error.message?error.message:String(error);storeLastOptimizationError(lastOptimizationError);
+    setStatus('Calculation failed: '+lastOptimizationError,'error');saveSession('optimization failed; prior layout retained');
     restoreScroll(viewport);
   }
   function startOptimization(){
     var viewport=captureScroll();
     try{
+      lastOptimizationError=null;storeLastOptimizationError(null);
       jobs.forEach(function(j){if(!j.orderQConfirmed)throw Error('Confirm a valid OrderQ for '+j.fileName+' before calculating.');});
-      var config={settings:settings(),jobs:jobs,mode:$('optimizationMode').value,maxOverproductionPct:overproductionLimit()};
+      var automaticOverproduction=$('overproductionCap').value==='auto';
+      var config={settings:settings(),jobs:jobs,mode:$('optimizationMode').value,maxOverproductionPct:overproductionLimit(),automaticOverproduction:automaticOverproduction};
       if(!jobs.length)throw Error('Import at least one PDF before calculating.');
+      var areaBound=oneSheetAreaBound(config);
+      if(config.maxOverproductionPct>0&&areaBound.minimumArea>areaBound.availableArea+1e-7)
+        throw Error('This order cannot fit on one sheet within the current overproduction cap. Even the best-case run-count bound needs at least '+
+          Math.round(1000*areaBound.minimumArea/areaBound.availableArea)/10+'% of the available cut-box area. Reduce the required quantities or cut-box sizes, use a larger sheet, or allow more overproduction.');
       stopOptimization();var requestId=++optimizationToken;
-      logOptimization('started',{inputJobs:jobs.length,mode:config.mode,settings:config.settings,overproductionCap:config.maxOverproductionPct});
+      logOptimization('started',{inputJobs:jobs.length,mode:config.mode,settings:config.settings,
+        overproductionCap:automaticOverproduction?'auto':config.maxOverproductionPct});
       $('optimize').innerHTML='Cancel calculation';$('optimizationProgress').hidden=false;showProgress({phase:'packing',completed:0,total:0});
       restoreScroll(viewport);
       saveSession('calculation started');
       if(typeof Worker==='undefined')throw Error('Background workers are unavailable in this CEP panel. Calculation was stopped safely.');
       try{
-        optimizationWorker=new Worker('optimizer-worker.js');
+        optimizationWorker=new Worker('optimizer-worker.js'+(window.bytebaseAssetSuffix||''));
         optimizationTimer=setTimeout(function(){if(requestId!==optimizationToken)return;failOptimization(Error('Optimizer exceeded the 15-second safety limit. Reduce the batch or check the debug log.'),requestId);},15000);
         optimizationWorker.onmessage=function(event){
           var message=event.data||{};if(requestId!==optimizationToken)return;
           try{
             if(message.type==='progress'){showProgress(message.progress||{});logOptimization('progress',{progress:message.progress,workerMemory:message.memory});}
             else if(message.type==='diagnostic')logOptimization(message.stage||'worker',{worker:message});
-            else if(message.type==='result')finishOptimization(message.plan,requestId);
-            else if(message.type==='error'){var failure=Error(message.message||'Optimization failed.');failure.stack=message.stack||failure.stack;failOptimization(failure,requestId);}
-          }catch(error){failOptimization(error,requestId);}
+            else if(message.type==='result'){optimizationWorker=null;finishOptimization(message.plan,requestId);}
+            else if(message.type==='error'){var failure=Error(message.message||'Optimization failed.');failure.stack=message.stack||failure.stack;failOptimization(failure,requestId,true);}
+          }catch(error){failOptimization(error,requestId,!optimizationWorker);}
         };
         optimizationWorker.onerror=function(event){
           if(requestId!==optimizationToken)return;
-          failOptimization(Error('Background optimizer failed to load or run: '+(event.message||'unknown worker error')+' (line '+(event.lineno||'?')+').'),requestId);
+          optimizationWorker=null;
+          failOptimization(Error('Background optimizer failed to load or run: '+(event.message||'unknown worker error')+' (line '+(event.lineno||'?')+').'),requestId,true);
         };
         optimizationWorker.onmessageerror=function(){failOptimization(Error('Background optimizer returned an unreadable message.'),requestId);};
         optimizationWorker.postMessage({config:config});
       }catch(workerError){failOptimization(workerError,requestId);}
     }catch(error){failOptimization(error,optimizationToken);restoreScroll(viewport);}
   }
-  $('optimizationMode').addEventListener('change',function(){saveSession('optimization mode changed');});
+  $('optimizationMode').addEventListener('change',function(){
+    var mode=$('optimizationMode').value,proposal=null;
+    proposals.some(function(candidate){if((candidate.modeIds||[]).indexOf(mode)>=0){proposal=candidate;return true;}return false;});
+    if(proposal){
+      latest=proposal;selectedSheet=0;
+      $('metricSheets').textContent=proposal.sheetCount;$('metricCopies').textContent=proposal.totalCopies;$('metricUsage').textContent=proposal.areaPct+'%';
+      $('create').disabled=demoMode||!isCEP||jobs.some(function(j){return !j.filePath||!isFinite(j.width)||!isFinite(j.height);});
+      renderProposals();renderJobs();renderSheetSummaries();renderPreview();
+      setStatus('Selected '+proposal.label+' proposal. '+proposal.reason,'success');
+    }
+    saveSession('optimization mode changed');
+  });
   $('overproductionCap').addEventListener('change',function(){
     $('customOverproduction').hidden=$('overproductionCap').value!=='custom';invalidate();
   });
@@ -423,7 +478,8 @@
       var detailToggle=document.createElement('details');detailToggle.className='proposal-job-details';
       var detailTitle=document.createElement('summary');detailTitle.textContent='Per-job production and overproduction';detailToggle.appendChild(detailTitle);
       var detailList=document.createElement('div');detailList.className='proposal-job-list';
-      p.jobs.forEach(function(job){var row=document.createElement('span');row.textContent=job.fileName+': '+job.copiesPerSheet+' copies × '+job.printingRuns+' runs, '+job.overproduction+' over ('+job.overproductionPct+'%)';detailList.appendChild(row);});
+      p.jobs.forEach(function(job){var row=document.createElement('span');row.textContent=job.fileName+': '+job.copiesPerSheet+
+        (job.sheetIndices&&job.sheetIndices.length>1?' copies/run across sheets × ':' copies × ')+job.printingRuns+' runs, '+job.overproduction+' over ('+job.overproductionPct+'%)';detailList.appendChild(row);});
       detailToggle.appendChild(detailList);card.appendChild(detailToggle);
       button.addEventListener('click',function(){
         var viewport=captureScroll();
@@ -477,7 +533,7 @@
   $('create').addEventListener('click',function(){
     if(!latest||demoMode) return;
     if(!cuttable(latest)){
-      setStatus('Recalculate first: Illustrator requires one artboard with a verified guillotine cut sequence. Imported PDFs remain loaded.','error');return;
+      setStatus('Recalculate first: Illustrator requires a verified guillotine cut sequence on every sheet. Imported PDFs remain loaded.','error');return;
     }
     if(!window.confirm('Create a WORKING layout in Illustrator?\n\nThis is not production-ready: no separation/RIP validation has been done.\nSource PDF files will remain linked and untouched.')) return;
     saveSession('before Illustrator document creation');

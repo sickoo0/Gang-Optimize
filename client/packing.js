@@ -186,9 +186,10 @@
     var largest=0;for(var j=0;j<bin.free.length;j++)largest=Math.max(largest,bin.free[j].w*bin.free[j].h);
     return [-largest,bin.free.length];
   }
-  // Pack each production job as one indivisible group of identical rectangles.
-  // A failed attempt on a sheet is isolated in a clone, so no partial job leaks.
-  function planGroups(config, printingRuns, orderMode, strategy, binMode, orderOverride) {
+  // Pack copies of production jobs either in contiguous job groups or
+  // interleaved rounds. The schedule matters because each guillotine cut
+  // permanently divides a bin.
+  function planGroups(config, printingRuns, orderMode, strategy, binMode, orderOverride, packingOrder) {
     var settings=config.settings||{}, sheetW=Number(settings.sheetW),sheetH=Number(settings.sheetH);
     var edge=Number(settings.edge),inset=Number(settings.inset),rotate=settings.rotate!==false;
     var workW=sheetW-2*edge,workH=sheetH-2*edge;
@@ -220,18 +221,24 @@
       if(orderMode===4)return b.copies-a.copies||b.area-a.area||compareId(a.job.id,b.job.id);
       return b.area-a.area||bLong-aLong||compareId(a.job.id,b.job.id);
     });
+    var units=[];
+    if(packingOrder===1){
+      var maxCopies=0;for(var mc=0;mc<groups.length;mc++)maxCopies=Math.max(maxCopies,groups[mc].copies);
+      for(var copyRound=0;copyRound<maxCopies;copyRound++)for(var rg=0;rg<groups.length;rg++){
+        var roundGroup=groups[rg];if(copyRound<roundGroup.copies)units.push({group:roundGroup,copyIndex:copyRound+1});
+      }
+    }else{
+      for(var ug=0;ug<groups.length;ug++)for(var uc=0;uc<groups[ug].copies;uc++)units.push({group:groups[ug],copyIndex:uc+1});
+    }
     var bins=[];
-    for(var gi=0;gi<groups.length;gi++){
-      var g=groups[gi],placed=false;
+    for(var gi=0;gi<units.length;gi++){
+      var unit=units[gi],g=unit.group,placed=false;
       var bestBin=-1,bestTrial=null,bestQuality=null;
       for(var bi=0;bi<bins.length;bi++){
-        var trial=cloneBin(bins[bi]),ok=true;
-        for(var ci=0;ci<g.copies;ci++){
-          if(!insert(trial,{id:String(g.job.id),filePath:g.job.filePath,fileName:g.job.fileName,
-            artworkW:Number(g.job.width),artworkH:Number(g.job.height),inset:inset,
-            w:g.rw,h:g.rh,copyIndex:ci+1},rotate,strategy)){ok=false;break;}
-        }
-        if(ok){
+        var trial=cloneBin(bins[bi]);
+        if(insert(trial,{id:String(g.job.id),filePath:g.job.filePath,fileName:g.job.fileName,
+          artworkW:Number(g.job.width),artworkH:Number(g.job.height),inset:inset,
+          w:g.rw,h:g.rh,copyIndex:unit.copyIndex},rotate,strategy)){
           if(!binMode){bins[bi]=trial;placed=true;break;}
           var quality=binQuality(trial,strategy);
           if(bestQuality===null||quality[0]<bestQuality[0]-EPS||Math.abs(quality[0]-bestQuality[0])<=EPS&&quality[1]<bestQuality[1]-EPS){
@@ -244,11 +251,9 @@
         if(bins.length>=20)return null; // Illustrator's layout pilot supports at most 20 artboards.
         var bin=createBin(edge,edge,workW,workH),fits=true;
         if(strategy==='guillotine')bin.cuts=Cutting.outerTrimCuts({sheetW:sheetW,sheetH:sheetH,edge:edge});
-        for(var cc=0;cc<g.copies;cc++){
-          if(!insert(bin,{id:String(g.job.id),filePath:g.job.filePath,fileName:g.job.fileName,
-            artworkW:Number(g.job.width),artworkH:Number(g.job.height),inset:inset,
-            w:g.rw,h:g.rh,copyIndex:cc+1},rotate,strategy)){fits=false;break;}
-        }
+        if(!insert(bin,{id:String(g.job.id),filePath:g.job.filePath,fileName:g.job.fileName,
+          artworkW:Number(g.job.width),artworkH:Number(g.job.height),inset:inset,
+          w:g.rw,h:g.rh,copyIndex:unit.copyIndex},rotate,strategy))fits=false;
         if(!fits)return null;
         bins.push(bin);
       }
@@ -257,11 +262,15 @@
       if(!Cutting||!Cutting.verifyGuillotineCuts)throw Error('Guillotine cut verifier is unavailable.');
       for(var check=0;check<bins.length;check++)if(!Cutting.verifyGuillotineCuts(
         {sheetW:sheetW,sheetH:sheetH,edge:edge},bins[check].placements,bins[check].cuts))
-        throw Error('Internal guillotine cut sequence is invalid.');
+        // Search candidates are heuristic. If a candidate's cut trace cannot
+        // be certified, reject it and let the optimizer continue with the
+        // other run counts and packing orders instead of aborting the search.
+        return null;
     }
     return {settings:{sheetW:sheetW,sheetH:sheetH,edge:edge,inset:inset,rotate:rotate},
       bins:bins,printingRuns:printingRuns,totalPlacements:placementTotal,
-      strategy:strategy,orderMode:orderMode,binMode:binMode,groupOrder:groups.map(function(g){return String(g.job.id);})};
+      strategy:strategy,orderMode:orderMode,binMode:binMode,packingOrder:packingOrder||0,
+      groupOrder:groups.map(function(g){return String(g.job.id);})};
   }
   function plan(config) {
     var settings = config.settings || {};

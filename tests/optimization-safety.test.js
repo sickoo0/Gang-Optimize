@@ -76,7 +76,8 @@ assert.equal(allowedOverproduction.areaPct,87.3,'utilization mode must search de
 assert.equal(allowedOverproduction.sheets[0].printingRuns,40);
 assert.deepEqual(allowedOverproduction.jobs.map(j=>j.overproduction),[20,20,30,0]);
 assert.throws(()=>Production.planProduction({settings,jobs:batch.map(j=>({...j,width:30,height:30})),mode:'utilization',maxOverproductionPct:0}),
-  /cannot fit together on one artboard/,'an impossible batch must never produce a second artboard');
+  /cannot fit on the required single gang sheet at 0% overproduction/,
+'exact orders that exceed one sheet fail with a clear limit instead of spilling onto extra artboards');
 console.log('PASS: three modes, repeated calculations, 0% overproduction, exact paths, valid geometry, early limit and 80-job batch');
 console.log(JSON.stringify({fourJobRuns:measurements,early:{sheets:early.sheetCount,stoppedEarly:early.stoppedEarly},
   largeBatch:{jobs:batch.length,ms:Date.now()-batchStarted,attempts:large.searchDiagnostics.packingAttempts,sheets:large.sheetCount},

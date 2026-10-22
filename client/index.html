@@ -46,12 +46,16 @@
           <label>Cut margin <small>mm / side</small><input id="inset" type="number" min="0" step="0.5" value="5"/></label>
         </div>
         <label class="priority-setting">Optimization mode
-          <select id="optimizationMode"><option value="balanced">Balanced (recommended)</option><option value="utilization">Maximum sheet utilization</option><option value="overproduction">Minimum overproduction</option></select>
+          <select id="optimizationMode"><option value="overproduction">Minimum overproduction (recommended)</option><option value="balanced">Balanced</option><option value="utilization">Maximum sheet utilization</option></select>
         </label>
-        <label class="priority-setting">Maximum overproduction per job
-          <select id="overproductionCap"><option value="0">0% (default)</option><option value="5">5%</option><option value="10">10%</option><option value="20">20%</option><option value="custom">Custom</option></select>
-          <input id="customOverproduction" type="number" min="0" max="1000" step="0.1" value="0" aria-label="Custom maximum overproduction percent" hidden/>
-        </label>
+        <details class="advanced-setting">
+          <summary>Advanced production limits</summary>
+          <label class="priority-setting">Maximum overproduction per job
+            <select id="overproductionCap"><option value="auto">Automatic (recommended)</option><option value="0">0%</option><option value="5">5%</option><option value="10">10%</option><option value="20">20%</option><option value="custom">Custom</option></select>
+            <input id="customOverproduction" type="number" min="0" max="1000" step="0.1" value="0" aria-label="Custom maximum overproduction percent" hidden/>
+            <small>Set a limit only when production requires it. All jobs use the same number of print runs.</small>
+          </label>
+        </details>
         <label class="toggle-row"><input type="checkbox" id="rotate" checked/><span><strong>Allow 90° rotation</strong><small>Never scales the original PDF</small></span></label>
         <div class="setting-info">20 mm edge inset is provisional. Replace with the actual BYTEBASE print boundary before production use.</div>
       </section>

@@ -1,5 +1,7 @@
 /* Run bounded production planning away from the CEP panel's UI thread. */
-importScripts('../host/cutting.js','packing.js','production.js');
+var reloadMatch=/(?:\?|&)bytebaseReload=(\d+)(?:&|$)/.exec(self.location.search||'');
+var assetSuffix=reloadMatch?'?bytebaseReload='+reloadMatch[1]:'';
+importScripts('../host/cutting.js'+assetSuffix,'packing.js'+assetSuffix,'production.js'+assetSuffix);
 
 self.onmessage=function(event){
   var started=Date.now(),lastSent=0,lastPhase='';

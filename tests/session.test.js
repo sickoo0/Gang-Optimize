@@ -32,4 +32,14 @@ Session.save(storage,{...state,jobs:restored.jobs,latest:restored.latest});
 assert.deepEqual(Session.load(storage).latest,selected,'failed generation callback leaves layout intact');
 Session.clear(storage);
 assert.equal(Session.load(storage),null);
+
+// Existing users who saved the old zero-cap default now get the automatic
+// optimizer and the least-overproduction objective after upgrading.
+storage.setItem(Session.key,JSON.stringify({version:1,jobs,latest:null,proposals:[],selectedSheet:0,
+  settings,optimizationMode:'balanced',overproductionCap:'0',customOverproduction:'0'}));
+const upgraded=Session.load(storage);
+assert.equal(upgraded.version,2);
+assert.equal(upgraded.migratedOptimizerDefaults,true);
+assert.equal(upgraded.optimizationMode,'overproduction');
+assert.equal(upgraded.overproductionCap,'auto');
 console.log('PASS: import, calculate, generate, CEP reload recovery, repeat generation, and failure retention');

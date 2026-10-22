@@ -70,6 +70,76 @@ for(const p of mixed.sheets[0].placements){assert.ok(p.x>=10&&p.y>=10);assert.ok
 for(let i=0;i<mixed.sheets[0].placements.length;i++)for(let k=i+1;k<mixed.sheets[0].placements.length;k++)
   assert.equal(require('../client/packing.js').intersect(mixed.sheets[0].placements[i],mixed.sheets[0].placements[k]),false);
 
+// The current six-order CEP session should use the same production quantities
+// while searching placement orders that avoid a large connected blank region.
+const liveSessionJobs=[
+  job('1',90.3594,18.9135,100),job('2',260.3601,161.1883,50),job('3',80.0001,25,1000),
+  job('4',90,18.5533,120),job('5',100.0002,64.1742,400),job('6',90.3527,31.4064,100)
+];
+assert.throws(()=>Production.planProduction({
+  settings:{sheetW:700,sheetH:500,edge:20,inset:5,rotate:true},jobs:liveSessionJobs,
+  mode:'balanced',maxOverproductionPct:0
+}),/cannot fit on the required single gang sheet at 0% overproduction.*% of the available area/,
+'the real CEP order stays on one sheet and explains why exact quantities do not fit at the default 0% cap');
+for(const cap of [5,10])for(const mode of ['balanced','utilization','overproduction'])
+  assert.throws(()=>Production.planProduction({
+    settings:{sheetW:700,sheetH:500,edge:20,inset:5,rotate:true},jobs:liveSessionJobs,
+    mode,maxOverproductionPct:cap
+  }),new RegExp('No shared printing-run count meets the current '+cap+'%.*lowest cap.*20% at 60 runs'),
+  'the real CEP order explains that low caps have no shared run count instead of showing a generic packing failure');
+const liveSessionAt20=Production.planProduction({
+  settings:{sheetW:700,sheetH:500,edge:20,inset:5,rotate:true},jobs:liveSessionJobs,
+  mode:'balanced',maxOverproductionPct:20
+});
+assert.equal(liveSessionAt20.sheetCount,1);
+assert.equal(liveSessionAt20.sheets[0].printingRuns,60);
+assert.equal(liveSessionAt20.totalCopies,31);
+assert.equal(liveSessionAt20.totalOverproduction,90);
+assert.ok(liveSessionAt20.proposals.some(proposal=>proposal.modeIds.includes('overproduction')),
+  'minimum-overproduction remains selectable when all feasible modes share the same 20% plan');
+const liveSessionAt25=Production.planProduction({
+  settings:{sheetW:700,sheetH:500,edge:20,inset:5,rotate:true},jobs:liveSessionJobs,
+  mode:'balanced',maxOverproductionPct:25
+});
+assert.equal(liveSessionAt25.sheetCount,1);
+assert.equal(liveSessionAt25.totalCopies,36);
+assert.equal(liveSessionAt25.totalOverproduction,30);
+assert.equal(liveSessionAt25.jobs.find(result=>result.id==='4').overproduction,30,
+  'a one-sheet alternative at 25% is explicit about the 30 extra copies of OrderQ 120');
+const liveSessionAutomatic=Production.planProduction({
+  settings:{sheetW:700,sheetH:500,edge:20,inset:5,rotate:true},jobs:liveSessionJobs,
+  mode:'overproduction',automaticOverproduction:true
+});
+assert.equal(Production.automaticOverproductionCap(liveSessionJobs),1900,
+  'automatic mode derives a finite run-count bound from the order quantities');
+assert.ok(Production.automaticOverproductionCap([{orderQ:900},{orderQ:1000}])>99.7,
+  'automatic mode includes run counts below an order quantity instead of imposing an implicit low cap');
+assert.equal(liveSessionAutomatic.sheetCount,1);
+assert.equal(liveSessionAutomatic.sheets[0].printingRuns,50);
+assert.equal(liveSessionAutomatic.totalCopies,36);
+assert.equal(liveSessionAutomatic.totalOverproduction,30,
+  'the default automatic objective finds the desired low-overproduction one-sheet layout without a user-set cap');
+assert.match(liveSessionAutomatic.recommendation,/automatic/);
+const liveSession=Production.planProduction({
+  settings:{sheetW:700,sheetH:500,edge:20,inset:5,rotate:true},jobs:liveSessionJobs,
+  mode:'balanced',maxOverproductionPct:76
+});
+assert.equal(liveSession.sheetCount,1);
+assert.equal(liveSession.totalCopies,36);
+assert.equal(liveSession.totalOverproduction,30);
+assert.ok(liveSession.searchDiagnostics.orderSearchComplete);
+assert.ok(liveSession.searchDiagnostics.orderSearchAttempts>0);
+assert.ok(liveSession.layoutQuality.largestNonCornerFreeRectArea<=303600*0.05,
+  'placement-order refinement keeps the largest connected blank region below 5% of usable sheet area');
+const liveMaximumUtilization=liveSession.proposals.find(proposal=>proposal.modeIds.includes('utilization'));
+assert.equal(liveMaximumUtilization.sheets[0].printingRuns,42);
+assert.equal(liveMaximumUtilization.totalCopies,45);
+assert.equal(liveMaximumUtilization.totalOverproduction,120);
+assert.ok(liveMaximumUtilization.areaPct>=92);
+assert.ok(liveMaximumUtilization.layoutQuality.largestNonCornerFreeRectArea<=303600*0.05);
+assert.equal(liveMaximumUtilization.jobs.find(result=>result.id==='2').overproductionPct,68,
+  'the higher-utilization proposal reports the per-job overage clearly and keeps it within the configured 76% cap');
+
 // Match the panel import sequence: parse full names before planning, preserve
 // the linked path verbatim, and retain imported quantities through recalculation.
 const imported=actualFiles.map(([name],i)=>{
@@ -86,28 +156,28 @@ assert.deepEqual(recalc1.jobs.map(j=>j.orderQ),[500,400,100,50]);
 assert.deepEqual(recalc2.jobs.map(j=>j.orderQ),[500,400,100,50]);
 assert.deepEqual(imported.map(j=>j.filePath),originalPaths);
 
-// Jobs that need multiple sheets must fail without making a second artboard.
+// Orders that need another sheet fail safely instead of creating extra artboards.
 assert.throws(()=>Production.planProduction({settings,jobs:[job('A',200,200,50),job('B',200,200,100),job('C',200,200,400),job('D',200,200,500)]}),
-  /one artboard/);
+  /cannot fit on the required single gang sheet/);
 assert.throws(()=>Production.planProduction({settings,jobs:[job('run-50',460,340,50),job('run-7',460,340,7)]}),
-  /one artboard/);
+  /cannot fit on the required single gang sheet/);
 
 // Cap enforcement is per job and applied after jobs are assigned to a sheet.
 const capJobs=[job('cap-500',500,100,500),job('cap-400',400,100,400),job('cap-100',100,100,100),job('cap-50',50,100,50)];
 assert.equal(Production.isRunWithinOverproductionLimit(capJobs.slice(0,3),40,20),true);
 assert.equal(Production.isRunWithinOverproductionLimit(capJobs,40,20),false,'one job cannot hide overproduction behind aggregate totals');
 assert.throws(()=>Production.planProduction({settings,jobs:[job('cap-large-A',460,340,500),job('cap-large-B',460,340,400)],maxOverproductionPct:5}),
-  /one artboard/);
+  /one (sheet|artboard)/);
 assert.throws(()=>Production.planProduction({settings,jobs:capJobs,maxOverproductionPct:-1}),/between 0% and 1000%/);
 let progressEvents=0;
 Production.planProduction({settings,jobs:[job('progress',20,20,20)]},()=>progressEvents++);
 assert.ok(progressEvents>0,'optimizer reports progress for the CEP panel');
 
-// Whole-job packing never silently spills any job onto another sheet.
+// Placement counts that cannot fit on one artboard are never spilled to another.
 assert.throws(()=>Production.planProduction({settings:{sheetW:700,sheetH:500,edge:10,inset:5,rotate:false},jobs:[
   job('large-A',220,220,1),job('large-B',220,220,1),job('large-C',220,220,1),
   job('large-D',220,220,1),job('large-E',220,220,1)
-]}),/one artboard/);
+]}),/No verified exact layout fits on the required single sheet/);
 
 assert.throws(()=>Production.planProduction({settings,jobs:[{...job('missing',20,20,1),orderQ:null}]}),/confirmed positive OrderQ/);
 console.log('PASS: literal/encoded OrderQ parsing (including the four production filenames), quantity persistence, production math, margins, rotation and overlaps');

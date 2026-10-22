@@ -121,14 +121,16 @@
     }}))));
     if(!noCuts.error||noCuts.error.indexOf('guillotine')<0)throw Error('Layout without cuts was not rejected');
     if(app.documents.length!==beforeReject)throw Error('Invalid cut sequence created an Illustrator document');
-    var rejected=parseHost(Bytebase.createLayout(encodeURIComponent(stringify({layout:{
+    var multi=parseHost(Bytebase.createLayout(encodeURIComponent(stringify({layout:{
       settings:{sheetW:700,sheetH:500,edge:10,inset:5,rotate:true},sheetCount:2,
-      sheets:[{index:0,placements:mixed0},{index:1,placements:[one]}]
+      sheets:[{index:0,placements:[one],cuts:fixtureCuts([one])},
+        {index:1,placements:[place('b',second,'fixture-70x100.pdf',dims.b.w,dims.b.h,10,10,false,1)]}]
     }}))));
-    if(!rejected.error||rejected.error.indexOf('one-artboard')<0&&rejected.error.indexOf('guillotine')<0)
-      throw Error('Two-artboard layout was not rejected');
+    if(!multi.error||multi.error.indexOf('exactly one')<0)throw Error('Two-artboard layout was not rejected');
+    if(app.documents.length!==beforeReject)throw Error('Rejected multi-artboard layout opened an Illustrator document');
     if(first.exists)first.remove();if(second.exists)second.remove();
-    return 'PASS: Illustrator actual-bounds placement: '+oneCount+' original PDF, '+copyCount+' same-PDF copies, '+mixedCount+' mixed-size placements on one artboard (including 90° rotation); two artboards rejected.';
+    return 'PASS: Illustrator actual-bounds placement: '+oneCount+' original PDF, '+copyCount+' same-PDF copies, '+mixedCount+
+      ' mixed-size placements; multi-artboard input was rejected (including 90° rotation).';
   }
   try{$.global.BYTEBASE_PLACEMENT_TEST_RESULT=run();$.writeln($.global.BYTEBASE_PLACEMENT_TEST_RESULT);}
   catch(e){
