@@ -1,0 +1,23 @@
+/* Landscape planning, production-mode controls, and selectable proposals. */
+.settings-grid input[readonly]{color:#c9d5df;background:#202832;border-color:#3d4854;cursor:default}
+.priority-setting{display:block;margin-top:12px;color:#cbd5df;font-size:10px}
+.priority-setting select,.priority-setting input{display:block;width:100%;min-width:0;margin-top:5px;padding:8px 10px;background:var(--surface);border:1px solid var(--stroke);border-radius:7px;color:var(--text);font-size:12px}
+.optimization-progress{margin:9px 0;padding:8px;background:#1b242d;border:1px solid #354352;border-radius:7px;color:#bfd2dd;font-size:9px}
+.optimization-progress[hidden],.priority-setting input[hidden]{display:none}
+.optimization-progress span{display:block;margin-bottom:5px}
+.optimization-progress progress{width:100%;height:8px;accent-color:#e9ad50}
+.proposals{display:grid;gap:7px;margin:10px 0}
+.proposals:empty{display:none}
+.proposal-card{display:block;min-width:0;padding:8px;color:var(--text);background:#1b242d;border:1px solid #354352;border-radius:7px}
+.proposal-card.selected{border-color:#e9ad50;box-shadow:inset 3px 0 #e9ad50}
+.proposal-choice{display:block;width:100%;min-width:0;padding:0;text-align:left;color:var(--text);background:transparent;border:0}
+.proposal-choice strong,.proposal-choice span,.proposal-choice small{display:block;overflow-wrap:anywhere}
+.proposal-choice strong{font-size:10px;color:#e6c68e}
+.proposal-metrics{margin-top:4px;font-size:9px;color:#e0e7ed}
+.proposal-quantities{margin-top:3px;font-size:8.5px;color:#91c5d2}
+.proposal-choice small{margin-top:4px;font-size:8.5px;line-height:1.4;color:#a2afbf}
+.proposal-choice .proposal-algorithm{color:#d4b37a}
+.proposal-job-details{margin-top:7px;border-top:1px solid #354352;padding-top:6px}
+.proposal-job-details summary{cursor:pointer;color:#9dc5d2;font-size:8.5px}
+.proposal-job-list{display:grid;gap:4px;margin-top:6px}
+.proposal-job-list span{font-size:8px;line-height:1.4;color:#cbd5df;overflow-wrap:anywhere}

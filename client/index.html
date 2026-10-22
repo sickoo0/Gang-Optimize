@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>BYTEBASE Gang Optimizer</title>
+  <script>
+    // A timestamp in the panel URL gives every local asset a fresh URL.
+    // Keep the scripts in parser order because panel.js depends on the others.
+    (function () {
+      var match = /(?:\?|&)bytebaseReload=(\d+)(?:&|$)/.exec(window.location.search);
+      var suffix = match ? '?bytebaseReload=' + match[1] : '';
+      window.bytebaseAssetSuffix = suffix;
+      document.write('<link rel="stylesheet" href="styles.css' + suffix + '">');
+      document.write('<link rel="stylesheet" href="optimization.css' + suffix + '">');
+    }());
+  </script>
+</head>
+<body>
+  <div class="app">
+    <header class="topbar">
+      <div class="mark"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 4v16M4 4l8 8 8-8M4 20l8-8 8 8" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+      <div class="headtext"><h1>Gang Optimizer</h1><span>BYTEBASE · Single-frame pilot</span></div>
+      <button id="reloadPanel" class="reload-panel" type="button" title="Reload panel and Illustrator scripts (development only)" aria-label="Reload Panel" hidden><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 6v5h-5M4 18v-5h5M5.5 9a7 7 0 0 1 12-2L20 11M4 13l2.5 4a7 7 0 0 0 12-2" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg><span>Reload Panel</span></button>
+      <span class="build">v0.1</span>
+    </header>
+    <div class="notice"><span class="dot"></span><span>Layout pilot – not approved for production / RIP</span></div>
+    <main>
+      <section class="section">
+        <div class="section-title"><span class="step">01</span><h2>Production files</h2><span class="eyebrow" id="fileCount">0 PDFs</span></div>
+        <div class="import-zone" id="importZone">
+          <span class="folder-symbol">▣</span>
+          <div><strong>Select PDF folder</strong><small>Links to your original production-ready files</small></div>
+          <button id="chooseFolder" class="btn secondary">Browse</button>
+        </div>
+        <div class="inline-actions"><button id="measure" class="btn link" disabled>Measure in Illustrator</button><button id="demo" class="btn link">Load demo</button></div>
+        <div id="jobs" class="jobs"></div>
+        <p id="measurementNote" class="helper">Dimensions are measured from Illustrator's placed PDF bounds and shown in millimetres. PDF page boxes can differ: verify the measurement against the intended TrimBox/CropBox. Failed measurements need verified manual dimensions; creation checks them against Illustrator again.</p>
+      </section>
+      <section class="section">
+        <div class="section-title"><span class="step">02</span><h2>Sheet settings</h2></div>
+        <div class="settings-grid">
+          <label>Sheet width <small>mm</small><input id="sheetW" type="number" value="700" readonly aria-readonly="true"/></label>
+          <label>Sheet height <small>mm</small><input id="sheetH" type="number" value="500" readonly aria-readonly="true"/></label>
+          <label>Outer print margin <small>mm / side</small><input id="edge" type="number" min="0" step="0.5" value="20"/></label>
+          <label>Cut margin <small>mm / side</small><input id="inset" type="number" min="0" step="0.5" value="5"/></label>
+        </div>
+        <label class="priority-setting">Optimization mode
+          <select id="optimizationMode"><option value="balanced">Balanced (recommended)</option><option value="utilization">Maximum sheet utilization</option><option value="overproduction">Minimum overproduction</option></select>
+        </label>
+        <label class="priority-setting">Maximum overproduction per job
+          <select id="overproductionCap"><option value="0">0% (default)</option><option value="5">5%</option><option value="10">10%</option><option value="20">20%</option><option value="custom">Custom</option></select>
+          <input id="customOverproduction" type="number" min="0" max="1000" step="0.1" value="0" aria-label="Custom maximum overproduction percent" hidden/>
+        </label>
+        <label class="toggle-row"><input type="checkbox" id="rotate" checked/><span><strong>Allow 90° rotation</strong><small>Never scales the original PDF</small></span></label>
+        <div class="setting-info">20 mm edge inset is provisional. Replace with the actual BYTEBASE print boundary before production use.</div>
+      </section>
+      <section class="section result-section">
+        <div class="section-title"><span class="step">03</span><h2>Single-frame layout</h2><span class="eyebrow" id="layoutType">Guillotine cutting</span></div>
+        <button id="optimize" class="btn primary full"><span class="spark">✳</span> Calculate layout</button>
+        <div id="optimizationProgress" class="optimization-progress" hidden><span id="progressLabel">Preparing search…</span><progress id="progressBar" max="1" value="0"></progress></div>
+        <div id="proposals" class="proposals" aria-label="Optimization proposals"></div>
+        <div class="metric-row">
+          <div class="metric"><span id="metricSheets">–</span><small>Sheets</small></div>
+          <div class="metric"><span id="metricCopies">–</span><small>Placements</small></div>
+          <div class="metric"><span id="metricUsage">–</span><small>Box usage</small></div>
+        </div>
+        <div id="sheetSummaries" class="sheet-summaries"></div>
+        <div class="preview-heading"><strong>Sheet preview</strong><div class="sheet-switch"><button id="prev" aria-label="Previous sheet" disabled>‹</button><span id="sheetIndex">– / –</span><button id="next" aria-label="Next sheet" disabled>›</button></div></div>
+        <div class="canvas-wrap"><canvas id="sheetCanvas" aria-label="Rectangle layout preview"></canvas></div>
+        <div class="legend"><span><i class="legend-square"></i> 5 mm cut margin included</span><span><i class="legend-line"></i> print limit</span><span><i class="legend-cut"></i> straight cut</span></div>
+        <button id="create" class="btn outline full" disabled>Create working Illustrator layout <span>↗</span></button>
+        <p class="helper">The Illustrator output is an editable proof using linked PDFs. It is <strong>not a separated exposure PDF</strong>. Spot inks, trapping, print order and RIP export are not yet validated.</p>
+      </section>
+      <div id="status" class="status" role="status">Ready. Choose a folder of production PDFs.</div>
+    </main>
+    <footer><span>Single-frame first</span><span class="footer-right">Split-frame · planned</span></footer>
+  </div>
+  <script>
+    (function () {
+      var files = ['../host/cutting.js', 'packing.js', 'production.js', 'session.js', 'panel.js'];
+      for (var i = 0; i < files.length; i++)
+        document.write('<script src="' + files[i] + window.bytebaseAssetSuffix + '"><\/script>');
+    }());
+  </script>
+</body>
+</html>
