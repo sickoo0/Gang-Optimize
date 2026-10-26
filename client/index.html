@@ -72,7 +72,7 @@
         <div id="sheetSummaries" class="sheet-summaries"></div>
         <div class="preview-heading"><strong>Sheet preview</strong><div class="sheet-switch"><button id="prev" aria-label="Previous sheet" disabled>‹</button><span id="sheetIndex">– / –</span><button id="next" aria-label="Next sheet" disabled>›</button></div></div>
         <div class="canvas-wrap"><canvas id="sheetCanvas" aria-label="Rectangle layout preview"></canvas></div>
-        <div class="legend"><span><i class="legend-square"></i> 5 mm cut margin included</span><span><i class="legend-line"></i> print limit</span><span><i class="legend-cut"></i> straight cut</span></div>
+        <div class="legend"><span><i class="legend-square"></i> 5 mm cut margin included</span><span>Dashed inner outline: artwork</span><span><i class="legend-line"></i> print limit</span><span><i class="legend-cut"></i> straight cut</span></div>
         <button id="create" class="btn outline full" disabled>Create working Illustrator layout <span>↗</span></button>
         <p class="helper">The Illustrator output is an editable proof using linked PDFs. It is <strong>not a separated exposure PDF</strong>. Spot inks, trapping, print order and RIP export are not yet validated.</p>
       </section>
@@ -82,7 +82,7 @@
   </div>
   <script>
     (function () {
-      var files = ['../host/cutting.js', 'packing.js', 'production.js', 'session.js', 'panel.js'];
+      var files = ['../host/cutting.js', 'packing.js', 'beam-packing.js', 'production.js', 'session.js', 'panel.js'];
       for (var i = 0; i < files.length; i++)
         document.write('<script src="' + files[i] + window.bytebaseAssetSuffix + '"><\/script>');
     }());

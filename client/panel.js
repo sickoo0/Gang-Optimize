@@ -338,7 +338,7 @@
     var completed=Number(progress.completed)||0,total=Number(progress.total)||0;
     $('progressBar').max=Math.max(1,total);$('progressBar').value=Math.min(completed,total);
     var phase=progress.phase==='packing'?'Packing layouts':progress.phase==='refining'?'Comparing per-sheet run counts':
-      progress.phase==='packing-order'?'Reducing leftover gaps':progress.phase==='complete'?'Finishing layout':'Preparing search';
+      progress.phase==='packing-order'?'Reducing leftover gaps':progress.phase==='maxrects-beam'?'Refining placements and filling gaps':progress.phase==='complete'?'Finishing layout':'Preparing search';
     $('progressLabel').textContent=phase+(total?' · '+completed+' / '+total:'');
     setStatus(phase+(total?' ('+completed+'/'+total+')':''));
   }
@@ -473,7 +473,7 @@
       var quantities=document.createElement('span');quantities.className='proposal-quantities';
       quantities.textContent=p.sheets.map(function(s,i){return 'S'+(i+1)+' '+s.printingRuns+' runs';}).join(' · ')+' · '+p.totalOverproduction+' over';button.appendChild(quantities);
       var reason=document.createElement('small');reason.textContent=p.reason;button.appendChild(reason);
-      var algo=document.createElement('small');algo.className='proposal-algorithm';algo.textContent=p.strategyLabel+' · deterministic';button.appendChild(algo);
+      var algo=document.createElement('small');algo.className='proposal-algorithm';algo.textContent=p.strategyLabel;button.appendChild(algo);
       card.appendChild(button);
       var detailToggle=document.createElement('details');detailToggle.className='proposal-job-details';
       var detailTitle=document.createElement('summary');detailTitle.textContent='Per-job production and overproduction';detailToggle.appendChild(detailTitle);
@@ -511,6 +511,9 @@
         var paletteIndex=(jobs.findIndex(function(j){return j.id===p.id})+palette.length)%palette.length;
         ctx.fillStyle=palette[paletteIndex];ctx.globalAlpha=.65;ctx.fillRect(x,y,w,h);ctx.globalAlpha=1;
         ctx.strokeStyle='#567187';ctx.lineWidth=.7;ctx.strokeRect(x,y,w,h);
+        // The inner outline is the same unscaled artwork box placed by JSX.
+        var inset=p.inset*ratio;
+        ctx.setLineDash([2,2]);ctx.strokeRect(x+inset,y+inset,w-2*inset,h-2*inset);ctx.setLineDash([]);
         if(w>40&&h>21){ctx.fillStyle='#132638';ctx.font='bold 10px Segoe UI,Arial';
           ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText((p.fileName||'PDF').replace(/\.pdf$/i,'').slice(0,13),x+w/2,y+h/2,w-4);}
       });

@@ -49,7 +49,7 @@ Bytebase.__hostBuild = 'single-sheet-v1';
   }
   function validateLayout(layout){
     var s=layout.settings, workW=Number(s.sheetW)-2*Number(s.edge), workH=Number(s.sheetH)-2*Number(s.edge);
-    if(!(workW>0&&workH>0&&Number(s.inset)>=0))throw Error('Invalid sheet or cut margin settings');
+    if(!(workW>0&&workH>0&&Number(s.inset)===5))throw Error('Invalid sheet settings: production requires a 5 mm cut margin');
     if(layout.sheets.length!==1||layout.sheetCount!==1)
       throw Error('The layout must contain exactly one verified gang sheet. Recalculate before creating an Illustrator document.');
     for(var si=0;si<layout.sheets.length;si++){
@@ -58,6 +58,7 @@ Bytebase.__hostBuild = 'single-sheet-v1';
         throw Error('Sheet '+(si+1)+' has no valid guillotine cut sequence. Recalculate before creating an Illustrator document.');
       for(var i=0;i<ps.length;i++){
         var p=ps[i], inset=Number(p.inset), aw=Number(p.artworkW), ah=Number(p.artworkH);
+        if(typeof p.rotated!=='boolean'||s.rotate===false&&p.rotated)throw Error('Invalid artwork rotation');
         if(!isFinite(p.x)||!isFinite(p.y)||!isFinite(p.w)||!isFinite(p.h)||
            !isFinite(inset)||!isFinite(aw)||!isFinite(ah)||inset!==Number(s.inset)||aw<=0||ah<=0)
           throw Error('Invalid placement geometry for '+(p.fileName||'PDF'));
@@ -67,6 +68,23 @@ Bytebase.__hostBuild = 'single-sheet-v1';
         if(p.x<Number(s.edge)-0.001||p.y<Number(s.edge)-0.001||p.x+p.w>Number(s.sheetW)-Number(s.edge)+0.001||p.y+p.h>Number(s.sheetH)-Number(s.edge)+0.001)
           throw Error('Placement is outside the printable area: '+(p.fileName||'PDF'));
         for(var j=0;j<i;j++)if(overlaps(p,ps[j]))throw Error('Overlapping cut rectangles on sheet '+(si+1));
+      }
+      if(layout.jobs){
+        var counts={},known={},copies={},run=Number(layout.sheets[si].printingRuns),cap=Number(layout.maxAllowedOverproductionPct);
+        if(!isFinite(cap)||cap<0||!isFinite(run)||run<1||Math.floor(run)!==run)throw Error('Recalculate the layout to verify production limits.');
+        for(var pc=0;pc<ps.length;pc++){
+          var id=String(ps[pc].id),copy=Number(ps[pc].copyIndex),copyKey=id+'|'+copy;
+          if(copy<1||Math.floor(copy)!==copy||copies[copyKey])throw Error('Invalid copy index in production layout');
+          copies[copyKey]=true;counts[id]=(counts[id]||0)+1;
+        }
+        for(var ji=0;ji<layout.jobs.length;ji++){
+          var job=layout.jobs[ji],jobId=String(job.id),q=Number(job.orderQ),count=counts[jobId]||0,produced=count*run;
+          if(known[jobId]||!isFinite(q)||q<1||Math.floor(q)!==q||!count||produced<q||100*(produced-q)/q>cap+1e-9||
+             Number(job.copiesPerSheet)!==count||Number(job.producedQuantity)!==produced||Number(job.printingRuns)!==run)
+            throw Error('Production quantities or overproduction limit do not match the preview. Recalculate the layout.');
+          known[jobId]=true;
+        }
+        for(var placedId in counts)if(counts.hasOwnProperty(placedId)&&!known[placedId])throw Error('Unknown job in production layout');
       }
     }
   }

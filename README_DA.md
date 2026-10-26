@@ -54,13 +54,23 @@ CEP-versioner kan variere i CDP-understøttelse. Hvis Playwright ikke kan koble 
 7. Klik **Create working Illustrator layout**. Funktionen bruger samme Illustrator-geometriske bounds ved måling og preflight. Hver placering oversættes fra dens målte bounds efter rotation og kontrolleres derefter mod den beregnede artwork-rektangel og skæremargen. Hvis de faktiske Illustrator-bounds afviger mere end 0,1 pt, stopper layoutet og dokumentet lukkes uden at skalere filerne.
 8. Det nye Illustrator-dokument er endnu ikke gemt. Kontroller visuelt placeringer, skæremargener og eventuelle PDF-/bounding-box-afvigelser.
 
+## MaxRects-søgning og sammenligning
+
+Optimeringen beholder den tidligere algoritmes gyldige forslag og supplerer dem med MaxRects og beam search. Den undersøger alternative placeringer, 0°/90° rotation og jobrækkefølger. Derefter fjernes og genplaceres lokale grupper, og mindre logoer kan fylde ledige områder. Ekstra kopier tillades kun inden for hvert jobs valgte overproduktionsgrænse; OrderQ og PDF-mål ændres aldrig. Produktionsmængder beregnes ud fra de faktiske placeringer gange det fælles antal trykoplag.
+
+Alle accepterede forslag skal stadig passe på ét ark og have en verificeret guillotine-snitsekvens. MaxRects-layouts uden en sådan sekvens afvises. Søgningen har begrænset beam-bredde, antal forsøg og køretid; resultatet er det bedste fundne gyldige layout, ikke et bevis for den matematisk højeste udnyttelse. Ved 0% overproduktion kan de tilladte kopimængder sætte en grænse, som omrokering alene ikke kan hæve. Panelets stiplede indre rektangler viser de oprindelige artwork-mål inden for den faste 5 mm skæremargen.
+
+`npm run benchmark:packing` sammenligner den komplette tidligere version (`ec0d1f9`) med den nye på identiske inputs og grænser. Den gemmer før/efter-layouts, kopital, oplag, overproduktion, faktisk artwork-dækning, skæreboks-dækning og tider i `artifacts/packing-comparison/report.json` og `report.html`. `npm test` kontrollerer geometri, produktionsgrænser og fejlforløb. `npm run test:browser` kontrollerer også worker-resultatet og de rektangler, som previewet faktisk tegner.
+
+Efter benchmarken kan `npm run test:illustrator:packing` på Windows kontrollere benchmark-layouts i Illustrator via COM. Den opretter geometriske test-PDF'er og nye testdokumenter, sammenligner hver placering med previewets koordinater og kontrollerer, at PDF'erne ikke skaleres. Testdokumenterne lukkes uden at blive gemt; eksisterende dokumenter ændres ikke. Resultatet gemmes i `artifacts/illustrator-packing/report.json`. Acceptgrænsen for Illustrators faktiske bounds er 0,1 pt (ca. 0,035 mm).
+
 ## Hvad piloten KAN
 
 - Dockbart panel med HTML/CSS/JS, uden npm- eller internetafhængigheder.
 - Valg af lokal mappe med PDF'er.
 - Automatisk måling af PDF'ers linkede geometriske bounds via Illustrator; originalerne overskrives aldrig. PDF-boksene inspiceres ikke selvstændigt, så TrimBox/CropBox skal stadig verificeres mod produktionsspecifikationen.
 - Manuel korrektion/bekræftelse af mål og OrderQ.
-- Quantity-aware planlægning på fast 700 × 500 mm landscape-ark med justerbar ydre printmargin, 5 mm cut margin og 0°/90° rotation. Planen søger over produktionsruns og faktisk geometrisk pakning, håndhæver overproduktionsloftet pr. job og opretter altid ét ark. Ved 0% afvises en ordre, der fysisk ikke kan være på ét ark. Gentagne geometrier caches; søgningen er afgrænset og deterministisk.
+- Quantity-aware planlægning på fast 700 × 500 mm landscape-ark med justerbar ydre printmargin, 5 mm cut margin og 0°/90° rotation. Planen søger over produktionsruns og faktisk geometrisk pakning, håndhæver overproduktionsloftet pr. job og opretter altid ét ark. Ved 0% afvises en ordre, der fysisk ikke kan være på ét ark. Gentagne geometrier caches. Søgningen bruger faste heuristikker; tidsgrænsen kan påvirke, hvor langt den når.
 - Ét artboard pr. layout. Hver udskæringsboks kan isoleres med en kontrolleret rækkefølge af lige guillotinesnit. Panelet viser preview og snitliste for arket.
 - Vælgbare optimeringsmåder: mindst overproduktion (anbefalet standard), Balanced og højeste arkudnyttelse. Overproduktionsgrænsen beregnes automatisk som standard og kan ændres under avancerede indstillinger. Panelet viser unikke resultater med produktionsmængder og overproduktion pr. job; ens produktionsplaner samles, så samme valg ikke vises flere gange. Balanced er en heuristic, ikke en beregning af kroner eller den billigste produktionsplan.
 - Preview af ét ark med skærefelter og guillotinesnit.

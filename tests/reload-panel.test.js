@@ -91,6 +91,7 @@ assert.deepEqual(written,[
   '<link rel="stylesheet" href="optimization.css?bytebaseReload=123">',
   '<script src="../host/cutting.js?bytebaseReload=123"></script>',
   '<script src="packing.js?bytebaseReload=123"></script>',
+  '<script src="beam-packing.js?bytebaseReload=123"></script>',
   '<script src="production.js?bytebaseReload=123"></script>',
   '<script src="session.js?bytebaseReload=123"></script>',
   '<script src="panel.js?bytebaseReload=123"></script>'

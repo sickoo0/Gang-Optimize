@@ -62,5 +62,48 @@
     }
     return true;
   }
-  return {outerTrimCuts:outerTrimCuts,verifyGuillotineCuts:verifyGuillotineCuts};
+  // Recover a physical cutting tree from a MaxRects layout. A free-form
+  // packing (for example a pinwheel) is rejected if no spanning cut exists.
+  // This uses only ES3 features so the exact same certificate runs in JSX.
+  function deriveGuillotineCuts(settings,placements){
+    if(!placements||!placements.length||placements.length>500)return null;
+    var edge=Number(settings.edge),work={x:edge,y:edge,w:Number(settings.sheetW)-2*edge,h:Number(settings.sheetH)-2*edge};
+    var cuts=outerTrimCuts(settings),free=[],stack=[{region:work,items:placements.slice(0)}];
+    for(var v=0;v<placements.length;v++){
+      var p=placements[v];
+      if(!validRect(p)||p.x<work.x-EPS||p.y<work.y-EPS||p.x+p.w>work.x+work.w+EPS||p.y+p.h>work.y+work.h+EPS)return null;
+    }
+    while(stack.length){
+      var task=stack.pop(),r=task.region,items=task.items;
+      if(!items.length){free.push(r);continue;}
+      if(items.length===1&&sameRect(r,items[0]))continue;
+      var best=null;
+      for(var axis=0;axis<2;axis++){
+        var origin=axis?r.y:r.x,end=origin+(axis?r.h:r.w),seen={};
+        for(var i=0;i<items.length;i++)for(var side=0;side<2;side++){
+          var at=axis?items[i].y+side*items[i].h:items[i].x+side*items[i].w;
+          if(at<=origin+EPS||at>=end-EPS||seen[String(at)])continue;
+          seen[String(at)]=true;
+          var left=[],right=[],crosses=false;
+          for(var j=0;j<items.length;j++){
+            var start=axis?items[j].y:items[j].x,stop=start+(axis?items[j].h:items[j].w);
+            if(stop<=at+EPS)left.push(items[j]);
+            else if(start>=at-EPS)right.push(items[j]);
+            else {crosses=true;break;}
+          }
+          if(crosses)continue;
+          var score=Math.abs(left.length-right.length);
+          if(!best||score<best.score)best={axis:axis,at:at,left:left,right:right,score:score};
+        }
+      }
+      if(!best)return null;
+      var a={x:r.x,y:r.y,w:r.w,h:r.h},b={x:r.x,y:r.y,w:r.w,h:r.h};
+      if(best.axis){a.h=best.at-r.y;b.y=best.at;b.h=r.y+r.h-best.at;}
+      else {a.w=best.at-r.x;b.x=best.at;b.w=r.x+r.w-best.at;}
+      cuts.push({axis:best.axis?'horizontal':'vertical',at:best.at,region:r});
+      stack.push({region:b,items:best.right},{region:a,items:best.left});
+    }
+    return verifyGuillotineCuts(settings,placements,cuts)?{cuts:cuts,free:free}:null;
+  }
+  return {outerTrimCuts:outerTrimCuts,verifyGuillotineCuts:verifyGuillotineCuts,deriveGuillotineCuts:deriveGuillotineCuts};
 }));

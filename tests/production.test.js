@@ -132,13 +132,11 @@ assert.ok(liveSession.searchDiagnostics.orderSearchAttempts>0);
 assert.ok(liveSession.layoutQuality.largestNonCornerFreeRectArea<=303600*0.05,
   'placement-order refinement keeps the largest connected blank region below 5% of usable sheet area');
 const liveMaximumUtilization=liveSession.proposals.find(proposal=>proposal.modeIds.includes('utilization'));
-assert.equal(liveMaximumUtilization.sheets[0].printingRuns,42);
-assert.equal(liveMaximumUtilization.totalCopies,45);
-assert.equal(liveMaximumUtilization.totalOverproduction,120);
-assert.ok(liveMaximumUtilization.areaPct>=92);
+assert.ok(liveMaximumUtilization.areaPct>=92.1,'the prior utilization incumbent is retained or improved');
+require('./plan-invariants.js')(liveMaximumUtilization,{settings:{sheetW:700,sheetH:500,edge:20,inset:5,rotate:true},jobs:liveSessionJobs,maxOverproductionPct:76});
 assert.ok(liveMaximumUtilization.layoutQuality.largestNonCornerFreeRectArea<=303600*0.05);
-assert.equal(liveMaximumUtilization.jobs.find(result=>result.id==='2').overproductionPct,68,
-  'the higher-utilization proposal reports the per-job overage clearly and keeps it within the configured 76% cap');
+assert.ok(liveMaximumUtilization.jobs.every(result=>result.overproductionPct<=76),
+  'the higher-utilization proposal reports every per-job overage within the configured cap');
 
 // Match the panel import sequence: parse full names before planning, preserve
 // the linked path verbatim, and retain imported quantities through recalculation.
@@ -151,7 +149,9 @@ assert.ok(imported.every(j=>j.orderQConfirmed));
 const originalPaths=imported.map(j=>j.filePath);
 const recalc1=Production.planProduction({settings,jobs:imported});
 const recalc2=Production.planProduction({settings,jobs:imported});
-assert.deepEqual(recalc1,recalc2,'bounded candidate selection and plan ordering are deterministic');
+assert.deepEqual(recalc1.jobs,recalc2.jobs,'recalculation retains production quantities; elapsed-time diagnostics may differ');
+require('./plan-invariants.js')(recalc1,{settings,jobs:imported,maxOverproductionPct:0});
+require('./plan-invariants.js')(recalc2,{settings,jobs:imported,maxOverproductionPct:0});
 assert.deepEqual(recalc1.jobs.map(j=>j.orderQ),[500,400,100,50]);
 assert.deepEqual(recalc2.jobs.map(j=>j.orderQ),[500,400,100,50]);
 assert.deepEqual(imported.map(j=>j.filePath),originalPaths);

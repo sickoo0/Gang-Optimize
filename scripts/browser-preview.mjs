@@ -4,6 +4,8 @@ import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { chromium } from 'playwright';
+import packingFixtures from '../tests/packing-fixtures.js';
+import validatePlan from '../tests/plan-invariants.js';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const artifacts = path.join(root, 'artifacts', 'browser-preview');
@@ -50,7 +52,19 @@ function session({ fixtureJobs, cap = '0', custom = '0', mode = 'balanced' }) {
 }
 async function newPanel(seed) {
   const context = await browser.newContext({ viewport: { width: 460, height: 900 }, deviceScaleFactor: 1 });
-  await context.addInitScript(({ key, value }) => localStorage.setItem(key, value),
+  await context.addInitScript(({ key, value }) => {
+    localStorage.setItem(key, value);
+    window.previewRectangles = [];
+    const stroke = CanvasRenderingContext2D.prototype.strokeRect, clear = CanvasRenderingContext2D.prototype.clearRect;
+    CanvasRenderingContext2D.prototype.strokeRect = function (...args) {
+      if (this.canvas.id === 'sheetCanvas') window.previewRectangles.push(args);
+      return stroke.apply(this, args);
+    };
+    CanvasRenderingContext2D.prototype.clearRect = function (...args) {
+      if (this.canvas.id === 'sheetCanvas') window.previewRectangles = [];
+      return clear.apply(this, args);
+    };
+  },
     { key: 'com.bytebase.gangoptimizer.session.v1', value: seed });
   const page = await context.newPage();
   page.on('pageerror', error => failures.push(`pageerror: ${error.message}`));
@@ -143,6 +157,27 @@ try {
   await context.close();
   results.push({ name: 'valid-one-sheet-preview', ...preview });
 
+  const utilizationInput = packingFixtures.find(fixture => fixture.name === 'measured-six-cap76');
+  const { context: utilizationContext, page: utilizationPage } = await newPanel(session({ fixtureJobs: utilizationInput.jobs, cap: 'custom', custom: '76', mode: 'utilization' }));
+  await utilizationPage.locator('#optimize').click();
+  await utilizationPage.waitForFunction(() => document.querySelector('#status').textContent.startsWith('Planned '), null, { timeout: 20000 });
+  const actualPreview = await utilizationPage.evaluate(() => ({
+    plan: JSON.parse(localStorage.getItem('com.bytebase.gangoptimizer.session.v1')).latest,
+    rectangles: window.previewRectangles, width: document.querySelector('#sheetCanvas').width
+  }));
+  validatePlan(actualPreview.plan, utilizationInput);
+  assert.ok(actualPreview.plan.areaPct >= 92.1, 'worker retains or improves baseline utilization');
+  const scale = actualPreview.width / settings.sheetW;
+  assert.equal(actualPreview.rectangles.length, 1 + actualPreview.plan.totalCopies * 2);
+  for (const [index, placement] of actualPreview.plan.sheets[0].placements.entries()) {
+    const box = actualPreview.rectangles[1 + index * 2], artwork = actualPreview.rectangles[2 + index * 2];
+    const expected = [placement.x, placement.y, placement.w, placement.h].map(mm => mm * scale);
+    const inner = [placement.x + 5, placement.y + 5, placement.w - 10, placement.h - 10].map(mm => mm * scale);
+    for (let axis = 0; axis < 4; axis++) { assert.ok(Math.abs(box[axis] - expected[axis]) < 1e-6); assert.ok(Math.abs(artwork[axis] - inner[axis]) < 1e-6); }
+  }
+  await utilizationPage.screenshot({ path: path.join(artifacts, 'maximum-utilization-preview.png'), fullPage: true });
+  results.push({ name: 'maximum-utilization-worker-and-preview', cutBoxPct: actualPreview.plan.areaPct, artworkPct: actualPreview.plan.artworkAreaPct, placements: actualPreview.plan.totalCopies });
+  await utilizationContext.close();
   assert.deepEqual(failures, [], `browser runtime errors: ${failures.join('; ')}`);
   const report = { generatedAt: new Date().toISOString(), browser: browser.version(), results, failures, artifacts };
   await (await import('node:fs/promises')).writeFile(path.join(artifacts, 'report.json'), JSON.stringify(report, null, 2));
