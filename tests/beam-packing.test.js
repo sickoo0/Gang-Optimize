@@ -32,6 +32,14 @@ for(const fixture of [fixtures[0],fixtures[1],fixtures[4]]){
   assert.equal(JSON.stringify(fixture),original);
   assert.ok(plan.searchDiagnostics.beam.expandedStates>1000);
 }
-assert.throws(()=>P.planProduction({...fixtures[0],settings:{...fixtures[0].settings,inset:4}}),/5 mm/);
+const adjustableJobs=[{id:'A',filePath:'C:/test/a.pdf',fileName:'a.pdf',width:40,height:40,orderQ:1},
+  {id:'B',filePath:'C:/test/b.pdf',fileName:'b.pdf',width:10,height:10,orderQ:1}];
+const zeroInput={settings:{sheetW:100,sheetH:80,edge:5,inset:0,rotate:true},jobs:adjustableJobs,mode:'utilization',maxOverproductionPct:0};
+const fourInput={...zeroInput,settings:{...zeroInput.settings,inset:4}};
+const zeroPlan=P.planProduction(zeroInput),fourPlan=P.planProduction(fourInput);
+validate(zeroPlan,zeroInput);validate(fourPlan,fourInput);
+assert.ok(zeroPlan.areaPct<fourPlan.areaPct,'zero margin uses the original PDF dimensions without hidden padding');
+assert.throws(()=>P.planProduction({...zeroInput,settings:{...zeroInput.settings,inset:-1}}),/between 0 and 50 mm/);
+assert.throws(()=>P.planProduction({...zeroInput,settings:{...zeroInput.settings,inset:51}}),/between 0 and 50 mm/);
 assert.throws(()=>P.planProduction({...fixtures[0],jobs:[fixtures[0].jobs[0],fixtures[0].jobs[0]]}),/unique ID/);
 console.log('PASS: MaxRects beam, repair, gap filling, cut certificates, exact dimensions, rotation and per-job production caps');

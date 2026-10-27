@@ -45,15 +45,15 @@ await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
 const address = server.address();
 const browser = await chromium.launch({ headless: true });
 
-function session({ fixtureJobs, cap = '0', custom = '0', mode = 'balanced' }) {
-  return JSON.stringify({ version: 2, savedAt: new Date().toISOString(), jobs: fixtureJobs, latest: null, proposals: [],
-    selectedSheet: 0, settings, optimizationMode: mode, overproductionCap: cap, customOverproduction: custom,
+function session({ fixtureJobs, cap = '0', custom = '0', mode = 'balanced', sheetSettings = settings }) {
+  return JSON.stringify({ version: 3, savedAt: new Date().toISOString(), jobs: fixtureJobs, latest: null, proposals: [],
+    selectedSheet: 0, settings: sheetSettings, optimizationMode: mode, overproductionCap: cap, customOverproduction: custom,
     scrollTop: 0, appScrollTop: 0, lastOptimizationError: null });
 }
-async function newPanel(seed) {
+async function newPanel(seed, options = {}) {
   const context = await browser.newContext({ viewport: { width: 460, height: 900 }, deviceScaleFactor: 1 });
   await context.addInitScript(({ key, value }) => {
-    localStorage.setItem(key, value);
+    if (value !== null) localStorage.setItem(key, value);
     window.previewRectangles = [];
     const stroke = CanvasRenderingContext2D.prototype.strokeRect, clear = CanvasRenderingContext2D.prototype.clearRect;
     CanvasRenderingContext2D.prototype.strokeRect = function (...args) {
@@ -66,6 +66,14 @@ async function newPanel(seed) {
     };
   },
     { key: 'com.bytebase.gangoptimizer.session.v1', value: seed });
+  if (options.bridgePlan) await context.addInitScript(({ placed }) => {
+    window.__bridgeCalls = [];
+    window.__adobe_cep__ = { evalScript(expression, callback) {
+      window.__bridgeCalls.push(expression);
+      callback(JSON.stringify({ sheets: 1, placed, verified: placed }));
+    } };
+    window.confirm = () => { throw Error('Native CEP confirm dialog blocked layout creation'); };
+  }, { placed: options.bridgePlan.totalCopies });
   const page = await context.newPage();
   page.on('pageerror', error => failures.push(`pageerror: ${error.message}`));
   page.on('crash', () => failures.push('page crash'));
@@ -99,12 +107,14 @@ try {
   const { context: migrationContext, page: migrationPage } = await newPanel(JSON.stringify(legacyState));
   const migration = await migrationPage.evaluate(() => ({
     mode: document.querySelector('#optimizationMode').value, cap: document.querySelector('#overproductionCap').value,
+    cutMargin: document.querySelector('#inset').value,
     status: document.querySelector('#status').textContent,
     savedVersion: JSON.parse(localStorage.getItem('com.bytebase.gangoptimizer.session.v1') || '{}').version
   }));
   assert.equal(migration.mode, 'overproduction');
   assert.equal(migration.cap, 'auto');
-  assert.equal(migration.savedVersion, 2);
+  assert.equal(migration.savedVersion, 3);
+  assert.equal(migration.cutMargin, '5', 'a saved production margin remains unchanged after upgrade');
   assert.match(migration.status, /fresh preview/i);
   await migrationContext.close();
   results.push({ name: 'legacy-settings-auto-migration', ...migration });
@@ -178,6 +188,52 @@ try {
   await utilizationPage.screenshot({ path: path.join(artifacts, 'maximum-utilization-preview.png'), fullPage: true });
   results.push({ name: 'maximum-utilization-worker-and-preview', cutBoxPct: actualPreview.plan.areaPct, artworkPct: actualPreview.plan.artworkAreaPct, placements: actualPreview.plan.totalCopies });
   await utilizationContext.close();
+
+  const createSeed = JSON.parse(session({ fixtureJobs: utilizationInput.jobs, cap: 'custom', custom: '76', mode: 'utilization' }));
+  createSeed.latest = actualPreview.plan;
+  createSeed.proposals = actualPreview.plan.proposals;
+  const { context: createContext, page: createPage } = await newPanel(JSON.stringify(createSeed), { bridgePlan: actualPreview.plan });
+  assert.equal(await createPage.locator('#create').isDisabled(), false);
+  await createPage.locator('#create').click();
+  await createPage.waitForFunction(() => document.querySelector('#status').textContent.startsWith('Created and verified '), null, { timeout: 3000 });
+  const bridgeCalls = await createPage.evaluate(() => window.__bridgeCalls);
+  assert.equal(bridgeCalls.length, 1, 'the Create button calls Illustrator exactly once');
+  const payload = /^Bytebase\.createLayout\("([^"]+)"\)$/.exec(bridgeCalls[0]);
+  assert.ok(payload, 'the CEP bridge receives a createLayout request');
+  assert.equal(JSON.parse(decodeURIComponent(payload[1])).layout.totalCopies, actualPreview.plan.totalCopies);
+  results.push({ name: 'create-button-invokes-illustrator-bridge', placements: actualPreview.plan.totalCopies });
+  await createContext.close();
+  const { context: freshContext, page: freshPage } = await newPanel(null);
+  assert.equal(await freshPage.locator('#inset').inputValue(), '0', 'a new installation defaults to no cut margin');
+  assert.equal(await freshPage.locator('#cutMarginLegend').innerText(), 'Cut margin: 0 mm / side');
+  await freshContext.close();
+
+  const zeroInput = packingFixtures.find(fixture => fixture.name === 'zero-cut-margin');
+  const { context: marginContext, page: marginPage } = await newPanel(session({ fixtureJobs: zeroInput.jobs, cap: '0', mode: 'utilization', sheetSettings: zeroInput.settings }));
+  await marginPage.locator('#optimize').click();
+  await marginPage.waitForFunction(() => document.querySelector('#status').textContent.startsWith('Planned '), null, { timeout: 20000 });
+  const zeroPreview = await marginPage.evaluate(() => ({
+    plan: JSON.parse(localStorage.getItem('com.bytebase.gangoptimizer.session.v1')).latest,
+    rectangles: window.previewRectangles
+  }));
+  validatePlan(zeroPreview.plan, zeroInput);
+  assert.equal(zeroPreview.rectangles.length, 1 + zeroPreview.plan.totalCopies, 'zero margin has no inner margin outline');
+  assert.equal(await marginPage.locator('#artworkLegend').isVisible(), false);
+  await marginPage.locator('#inset').fill('4');
+  await marginPage.locator('#inset').dispatchEvent('change');
+  assert.equal(await marginPage.locator('#create').isDisabled(), true, 'changing the margin invalidates the previous layout');
+  assert.equal(await marginPage.locator('#cutMarginLegend').innerText(), 'Cut margin: 4 mm / side');
+  await marginPage.locator('#optimize').click();
+  await marginPage.waitForFunction(() => document.querySelector('#status').textContent.startsWith('Planned '), null, { timeout: 20000 });
+  const fourPreview = await marginPage.evaluate(() => ({
+    plan: JSON.parse(localStorage.getItem('com.bytebase.gangoptimizer.session.v1')).latest,
+    rectangles: window.previewRectangles
+  }));
+  validatePlan(fourPreview.plan, { ...zeroInput, settings: { ...zeroInput.settings, inset: 4 } });
+  assert.equal(fourPreview.rectangles.length, 1 + fourPreview.plan.totalCopies * 2);
+  assert.equal(await marginPage.locator('#artworkLegend').isVisible(), true);
+  results.push({ name: 'editable-cut-margin', zeroMm: zeroPreview.plan.areaPct, fourMm: fourPreview.plan.areaPct });
+  await marginContext.close();
   assert.deepEqual(failures, [], `browser runtime errors: ${failures.join('; ')}`);
   const report = { generatedAt: new Date().toISOString(), browser: browser.version(), results, failures, artifacts };
   await (await import('node:fs/promises')).writeFile(path.join(artifacts, 'report.json'), JSON.stringify(report, null, 2));

@@ -12,7 +12,7 @@
 // handlers instead of remaining trapped in the evalFile scope.
 var Bytebase = $.global.Bytebase || {};
 $.global.Bytebase = Bytebase;
-Bytebase.__hostBuild = 'single-sheet-v1';
+Bytebase.__hostBuild = 'variable-cut-margin-v2';
 (function(){
   function mm(points){ return BytebaseGeometry.ptToMm(points); }
   function pt(mmValue){ return BytebaseGeometry.mmToPt(mmValue); }
@@ -47,9 +47,58 @@ Bytebase.__hostBuild = 'single-sheet-v1';
     return a.x < b.x+b.w-0.00001 && a.x+a.w > b.x+0.00001 &&
       a.y < b.y+b.h-0.00001 && a.y+a.h > b.y+0.00001;
   }
+  function offsetBounds(b,dx,dy){
+    return {left:b.left+dx,top:b.top+dy,right:b.right+dx,bottom:b.bottom+dy};
+  }
+  function placeWithoutRoundingOverlap(item,placement,board,prior,sheetIndex){
+    var actual=verifyPlacedItem(item,placement,board,sheetIndex),overlap=false;
+    for(var i=0;i<prior.length;i++)if(BytebaseGeometry.overlaps(actual,prior[i])){overlap=true;break;}
+    if(!overlap)return actual;
+    // At zero cut margin, Illustrator can report a few ten-thousandths of a
+    // point more width than the measured/rounded millimetres. Move only enough
+    // to clear that numerical overlap. PDF dimensions and rotation stay intact.
+    var maxShift=0.05,gap=0.001,xs=[0],ys=[0],expected=BytebaseGeometry.expectedArtworkBounds(board,placement),
+      cut={left:board[0]+pt(placement.x),top:board[1]-pt(placement.y),
+        right:board[0]+pt(placement.x+placement.w),bottom:board[1]-pt(placement.y+placement.h)};
+    function addOffset(list,value){
+      if(Math.abs(value)>maxShift)return;
+      for(var oi=0;oi<list.length;oi++)if(Math.abs(list[oi]-value)<0.000001)return;
+      list.push(value);
+    }
+    for(var n=0;n<prior.length;n++){
+      var p=prior[n];
+      if(p.right<actual.left-maxShift||p.left>actual.right+maxShift||
+         p.top<actual.bottom-maxShift||p.bottom>actual.top+maxShift)continue;
+      var offsets=[p.right-actual.left+gap,p.left-actual.right-gap,
+        p.top-actual.bottom+gap,p.bottom-actual.top-gap];
+      addOffset(xs,offsets[0]);addOffset(xs,offsets[1]);
+      addOffset(ys,offsets[2]);addOffset(ys,offsets[3]);
+    }
+    var candidates=[];
+    for(var xi=0;xi<xs.length;xi++)for(var yi=0;yi<ys.length;yi++)
+      candidates.push({dx:xs[xi],dy:ys[yi],distance:Math.abs(xs[xi])+Math.abs(ys[yi])});
+    candidates.sort(function(a,b){return a.distance-b.distance;});
+    for(var ci=0;ci<candidates.length;ci++){
+      var move=candidates[ci],shifted=offsetBounds(actual,move.dx,move.dy),clear=true;
+      if(!BytebaseGeometry.equalBounds(shifted,expected,BOUNDS_TOLERANCE_PT)||
+         !BytebaseGeometry.contains(cut,shifted,BOUNDS_TOLERANCE_PT))continue;
+      for(var pi=0;pi<prior.length;pi++)if(BytebaseGeometry.overlaps(shifted,prior[pi])){clear=false;break;}
+      if(!clear)continue;
+      item.translate(move.dx,move.dy,true,true,true,true);
+      var verified=verifyPlacedItem(item,placement,board,sheetIndex);
+      for(var check=0;check<prior.length;check++)if(BytebaseGeometry.overlaps(verified,prior[check]))
+        throw Error('Illustrator placement still overlaps after rounding correction for '+placement.fileName+'. Layout creation stopped.');
+      return verified;
+    }
+    throw Error('Actual Illustrator artwork bounds overlap on sheet '+(sheetIndex+1)+' near '+placement.fileName+
+      ' copy '+placement.copyIndex+'. Layout creation stopped.');
+  }
   function validateLayout(layout){
     var s=layout.settings, workW=Number(s.sheetW)-2*Number(s.edge), workH=Number(s.sheetH)-2*Number(s.edge);
-    if(!(workW>0&&workH>0&&Number(s.inset)===5))throw Error('Invalid sheet settings: production requires a 5 mm cut margin');
+    var layoutClearance=Number(s.artworkClearance)||0;
+    if(!(workW>0&&workH>0&&isFinite(Number(s.inset))&&Number(s.inset)>=0&&Number(s.inset)<=50&&
+      isFinite(layoutClearance)&&layoutClearance>=0&&layoutClearance<=0.5))
+      throw Error('Invalid sheet or cut margin settings');
     if(layout.sheets.length!==1||layout.sheetCount!==1)
       throw Error('The layout must contain exactly one verified gang sheet. Recalculate before creating an Illustrator document.');
     for(var si=0;si<layout.sheets.length;si++){
@@ -57,12 +106,12 @@ Bytebase.__hostBuild = 'single-sheet-v1';
       if(!BytebaseCutting.verifyGuillotineCuts(s,ps,layout.sheets[si].cuts))
         throw Error('Sheet '+(si+1)+' has no valid guillotine cut sequence. Recalculate before creating an Illustrator document.');
       for(var i=0;i<ps.length;i++){
-        var p=ps[i], inset=Number(p.inset), aw=Number(p.artworkW), ah=Number(p.artworkH);
+        var p=ps[i], inset=Number(p.inset), clearance=Number(p.clearance)||0,aw=Number(p.artworkW), ah=Number(p.artworkH);
         if(typeof p.rotated!=='boolean'||s.rotate===false&&p.rotated)throw Error('Invalid artwork rotation');
         if(!isFinite(p.x)||!isFinite(p.y)||!isFinite(p.w)||!isFinite(p.h)||
-           !isFinite(inset)||!isFinite(aw)||!isFinite(ah)||inset!==Number(s.inset)||aw<=0||ah<=0)
+           !isFinite(inset)||!isFinite(clearance)||!isFinite(aw)||!isFinite(ah)||inset!==Number(s.inset)||clearance!==layoutClearance||aw<=0||ah<=0)
           throw Error('Invalid placement geometry for '+(p.fileName||'PDF'));
-        var expectedW=(p.rotated?ah:aw)+2*inset, expectedH=(p.rotated?aw:ah)+2*inset;
+        var expectedW=(p.rotated?ah:aw)+2*inset+clearance, expectedH=(p.rotated?aw:ah)+2*inset+clearance;
         if(Math.abs(Number(p.w)-expectedW)>0.001||Math.abs(Number(p.h)-expectedH)>0.001)
           throw Error('Cut rectangle dimensions do not match artwork and margin for '+(p.fileName||'PDF'));
         if(p.x<Number(s.edge)-0.001||p.y<Number(s.edge)-0.001||p.x+p.w>Number(s.sheetW)-Number(s.edge)+0.001||p.y+p.h>Number(s.sheetH)-Number(s.edge)+0.001)
@@ -223,11 +272,7 @@ Bytebase.__hostBuild = 'single-sheet-v1';
             // PlacedItem.position is read-only. Translate its measured bounds after rotation.
             var wanted=BytebaseGeometry.expectedArtworkBounds(board,placement),before=placedBounds(item);
             item.translate(wanted.left-before.left,wanted.top-before.top,true,true,true,true);
-            var verified=verifyPlacedItem(item,placement,board,si);
-            for(var prior=0;prior<actualBoundsBySheet[si].length;prior++){
-              if(BytebaseGeometry.overlaps(verified,actualBoundsBySheet[si][prior]))
-                throw Error('Actual Illustrator artwork bounds overlap on sheet '+(si+1)+' near '+placement.fileName+' copy '+placement.copyIndex+'. Layout creation stopped.');
-            }
+            var verified=placeWithoutRoundingOverlap(item,placement,board,actualBoundsBySheet[si],si);
             actualBoundsBySheet[si].push(verified);
             item.name='BYTEBASE | '+placement.fileName+' | copy '+placement.copyIndex;
             placedCount++;

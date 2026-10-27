@@ -52,6 +52,10 @@
     var copies=Math.ceil(q/r),produced=copies*r;
     return {copiesPerSheet:copies,printingRuns:r,producedQuantity:produced,overproduction:produced-q};
   }
+  function slotArea(job,settings){
+    var inset=Number(settings.inset),clearance=Number(settings.artworkClearance)||0;
+    return (Number(job.width)+2*inset+clearance)*(Number(job.height)+2*inset+clearance);
+  }
   function isRunWithinOverproductionLimit(jobs,runs,maxPct){
     var limit=Number(maxPct);
     if(!isFinite(limit)||limit<0)return false;
@@ -202,7 +206,7 @@
       if(exact.length<=limit)return exact;
       var work=settings?(settings.sheetW-2*settings.edge)*(settings.sheetH-2*settings.edge):Infinity;
       var scoredExact=exact.map(function(run){var area=0,copies=0;jobs.forEach(function(j){var count=Number(j.orderQ)/run;copies+=count;
-        area+=count*(Number(j.width)+2*settings.inset)*(Number(j.height)+2*settings.inset);});
+        area+=count*slotArea(j,settings);});
         return {run:run,area:Math.min(area,work),copies:copies};
       }).sort(function(a,b){return b.area-a.area||a.copies-b.copies||b.run-a.run;});
       scoredExact.slice(0,Math.max(1,Math.floor(limit/2))).forEach(function(entry){add(entry.run);});
@@ -217,7 +221,7 @@
       candidates.map(function(run){
         var area=0,copies=0;
         jobs.forEach(function(j){var count=Math.ceil(Number(j.orderQ)/run);copies+=count;
-          area+=count*(Number(j.width)+2*settings.inset)*(Number(j.height)+2*settings.inset);});
+          area+=count*slotArea(j,settings);});
         return {run:run,area:area,copies:copies};
       }).filter(function(x){return x.copies<=MAX_PLACEMENTS&&x.area<=work+1e-7&&
         isRunWithinOverproductionLimit(jobs,x.run,maxOverPct);})
@@ -296,7 +300,7 @@
       var run=runs[ri],copies=0,area=0;
       for(var sj=0;sj<jobs.length;sj++){
         var job=jobs[sj],count=Number(job.orderQ)/run;
-        copies+=count;area+=count*(job.width+2*settings.inset)*(job.height+2*settings.inset);
+        copies+=count;area+=count*slotArea(job,settings);
       }
       if(copies>MAX_PLACEMENTS||area>work+1e-7)continue;
       if(area>boundArea)boundArea=area;
@@ -326,7 +330,7 @@
     var copies=0,area=0;
     jobs.forEach(function(job){
       var count=Math.ceil(Number(job.orderQ)/maxCommonRuns);
-      copies+=count;area+=count*(Number(job.width)+2*settings.inset)*(Number(job.height)+2*settings.inset);
+      copies+=count;area+=count*slotArea(job,settings);
     });
     return {maximumRunBound:maxCommonRuns,minimumCopies:copies,minimumArea:area};
   }
@@ -356,7 +360,7 @@
         var job2=jobs[ji2],orderQ=Number(job2.orderQ),copyCount=Math.ceil(orderQ/runCount),produced=copyCount*runCount,
           overproduction=produced-orderQ,overPct=100*overproduction/orderQ;
         placements+=copyCount;
-        area+=copyCount*(Number(job2.width)+2*Number(settings.inset))*(Number(job2.height)+2*Number(settings.inset));
+        area+=copyCount*slotArea(job2,settings);
         totalOverproduction+=overproduction;maxPct=Math.max(maxPct,overPct);
         byJob.push({id:job2.id,orderQ:orderQ,producedQuantity:produced,overproduction:overproduction,overproductionPct:overPct});
       }
@@ -657,7 +661,7 @@
       var oneSheetArea=(settings.sheetW-2*settings.edge)*(settings.sheetH-2*settings.edge),runOrderCandidates=candidates.map(function(run){
         var copies=0,area=0,over=0;
         jobs.forEach(function(job){var q=quantities(Number(job.orderQ),run);copies+=q.copiesPerSheet;over+=q.overproduction;
-          area+=q.copiesPerSheet*(Number(job.width)+2*Number(settings.inset))*(Number(job.height)+2*Number(settings.inset));});
+          area+=q.copiesPerSheet*slotArea(job,settings);});
         return {run:run,copies:copies,area:area,over:over,density:copies?area/copies:0};
       }).filter(function(candidate){return !representedRuns[candidate.run]&&candidate.copies<=MAX_PLACEMENTS&&
         candidate.area<=oneSheetArea+1e-7&&isRunWithinOverproductionLimit(jobs,candidate.run,maxOverPct);})
@@ -709,7 +713,7 @@
     result.maxAllowedOverproductionPct=maxOverPct;proposals.forEach(function(p){p.maxAllowedOverproductionPct=maxOverPct;});
     result.testedRunCounts=candidates.filter(function(r){return !!runSeen[r];});result.testedPackingConfigurations=Object.keys(configSeen).length;
     if(exactSearch&&exactSearch.upperBoundPct!=null){result.utilizationUpperBoundPct=exactSearch.upperBoundPct;
-      result.recommendation+=' One-artboard box-use ceiling from the required copy counts under the current zero-overproduction rule: '+exactSearch.upperBoundPct+'%. This percentage counts the 5 mm cut margins inside every placement.';}
+      result.recommendation+=' One-artboard box-use ceiling from the required copy counts under the current zero-overproduction rule: '+exactSearch.upperBoundPct+'%. This percentage includes the configured cut margin inside every placement.';}
     stats.elapsedMs=Date.now()-start;stats.candidateCount=attempts.length;
     result.searchDiagnostics={inputJobs:stats.inputJobs,mode:stats.mode,runCandidatesEvaluated:stats.runCandidatesEvaluated,
       packingAttempts:stats.packingAttempts,searchIterations:stats.searchIterations,candidateCount:stats.candidateCount,stoppedEarly:stats.stoppedEarly,
@@ -726,7 +730,7 @@
     jobs.forEach(function(j){for(var c=1;c<=MAX_PLACEMENTS;c++)seen[Math.ceil(j.orderQ/c)]=true;});
     Object.keys(seen).forEach(function(value){
       var run=Number(value),area=0,count=0,over=0,upper=0,valid=true;
-      jobs.forEach(function(j){var copies=Math.ceil(j.orderQ/run),maximum=Math.min(MAX_PLACEMENTS,Math.floor((j.orderQ*(1+cap/100)+1e-9)/run)),box=(j.width+2*settings.inset)*(j.height+2*settings.inset);
+      jobs.forEach(function(j){var copies=Math.ceil(j.orderQ/run),maximum=Math.min(MAX_PLACEMENTS,Math.floor((j.orderQ*(1+cap/100)+1e-9)/run)),box=slotArea(j,settings);
         if(copies>maximum)valid=false;area+=copies*box;count+=copies;over+=copies*run-j.orderQ;upper+=maximum*box;});
       if(valid&&count<=MAX_PLACEMENTS&&area<=work+1e-7)runs.push({run:run,area:area,over:over,upper:Math.min(work,upper)});
     });
@@ -735,12 +739,13 @@
   function validateProductionPlan(plan,jobs,cap){
     if(!plan||plan.sheetCount!==1||plan.sheets.length!==1)return false;
     var s=plan.settings,sheet=plan.sheets[0],ps=sheet.placements,counts=Object.create(null),source=Object.create(null),copies=Object.create(null),runs=sheet.printingRuns;
-    if(!Number.isInteger(runs)||runs<1||ps.length>MAX_PLACEMENTS||s.inset!==5||!P.verifyGuillotineCuts(s,ps,sheet.cuts))return false;
+    var inset=Number(s.inset),clearance=Number(s.artworkClearance)||0;
+    if(!Number.isInteger(runs)||runs<1||ps.length>MAX_PLACEMENTS||!isFinite(inset)||inset<0||inset>50||!isFinite(clearance)||clearance<0||clearance>0.5||!P.verifyGuillotineCuts(s,ps,sheet.cuts))return false;
     jobs.forEach(function(j){source[String(j.id)]=j;});
     for(var i=0;i<ps.length;i++){
       var p=ps[i],j=source[p.id];
-      if(!j||p.filePath!==j.filePath||p.artworkW!==j.width||p.artworkH!==j.height||p.inset!==5||typeof p.rotated!=='boolean'||p.rotated&&s.rotate===false)return false;
-      if(!isFinite(p.x)||!isFinite(p.y)||Math.abs(p.w-(p.rotated?j.height:j.width)-10)>1e-6||Math.abs(p.h-(p.rotated?j.width:j.height)-10)>1e-6)return false;
+      if(!j||p.filePath!==j.filePath||p.artworkW!==j.width||p.artworkH!==j.height||Number(p.inset)!==inset||Number(p.clearance||0)!==clearance||typeof p.rotated!=='boolean'||p.rotated&&s.rotate===false)return false;
+      if(!isFinite(p.x)||!isFinite(p.y)||Math.abs(p.w-(p.rotated?j.height:j.width)-2*inset-clearance)>1e-6||Math.abs(p.h-(p.rotated?j.width:j.height)-2*inset-clearance)>1e-6)return false;
       if(p.x<s.edge-1e-6||p.y<s.edge-1e-6||p.x+p.w>s.sheetW-s.edge+1e-6||p.y+p.h>s.sheetH-s.edge+1e-6)return false;
       if(!Number.isInteger(p.copyIndex)||p.copyIndex<1||copies[p.id+'|'+p.copyIndex])return false;
       copies[p.id+'|'+p.copyIndex]=true;counts[p.id]=(counts[p.id]||0)+1;
@@ -752,8 +757,17 @@
   }
   function planProduction(config,onProgress,options){
     options=options||{};
-    var started=Date.now(),jobs=config.jobs||[],settings=config.settings||{},ids=Object.create(null);
-    if(Number(settings.inset)!==5)throw Error('Production layouts require a 5 mm cut margin on every side.');
+    var started=Date.now(),jobs=config.jobs||[],sourceSettings=config.settings||{},settings={},ids=Object.create(null),settingKey;
+    for(settingKey in sourceSettings)if(sourceSettings.hasOwnProperty(settingKey))settings[settingKey]=sourceSettings[settingKey];
+    if(!isFinite(Number(settings.inset))||Number(settings.inset)<0||Number(settings.inset)>50)
+      throw Error('Cut margin must be between 0 and 50 mm per side.');
+    // At 0 mm, Illustrator can report a linked PDF a few hundredths of a
+    // point larger than its rounded measurement. Reserve 0.1 mm at the right
+    // and bottom of each placement slot so the actual artwork cannot overlap.
+    // This is a geometry tolerance, not a user-facing cut margin.
+    settings.artworkClearance=Number(settings.inset)===0?0.1:0;
+    var normalizedConfig={};for(settingKey in config)if(config.hasOwnProperty(settingKey))normalizedConfig[settingKey]=config[settingKey];
+    normalizedConfig.settings=settings;config=normalizedConfig;
     jobs.forEach(function(j){if(ids[String(j.id)])throw Error('Every production job must have a unique ID.');ids[String(j.id)]=true;});
     var cap=config.automaticOverproduction?automaticOverproductionCap(jobs):Number(config.maxOverproductionPct||0),baseline=null,failure=null;
     try{baseline=planLegacyProduction(config,onProgress?function(p){if(p.phase!=='complete')onProgress(p);}:null,options);}catch(e){failure=e;}

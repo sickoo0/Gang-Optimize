@@ -43,7 +43,7 @@
           <label>Sheet width <small>mm</small><input id="sheetW" type="number" value="700" readonly aria-readonly="true"/></label>
           <label>Sheet height <small>mm</small><input id="sheetH" type="number" value="500" readonly aria-readonly="true"/></label>
           <label>Outer print margin <small>mm / side</small><input id="edge" type="number" min="0" step="0.5" value="20"/></label>
-          <label>Cut margin <small>mm / side</small><input id="inset" type="number" min="0" step="0.5" value="5"/></label>
+          <label>Cut margin <small>mm / side</small><input id="inset" type="number" min="0" max="50" step="0.5" value="0"/></label>
         </div>
         <label class="priority-setting">Optimization mode
           <select id="optimizationMode"><option value="overproduction">Minimum overproduction (recommended)</option><option value="balanced">Balanced</option><option value="utilization">Maximum sheet utilization</option></select>
@@ -72,7 +72,7 @@
         <div id="sheetSummaries" class="sheet-summaries"></div>
         <div class="preview-heading"><strong>Sheet preview</strong><div class="sheet-switch"><button id="prev" aria-label="Previous sheet" disabled>‹</button><span id="sheetIndex">– / –</span><button id="next" aria-label="Next sheet" disabled>›</button></div></div>
         <div class="canvas-wrap"><canvas id="sheetCanvas" aria-label="Rectangle layout preview"></canvas></div>
-        <div class="legend"><span><i class="legend-square"></i> 5 mm cut margin included</span><span>Dashed inner outline: artwork</span><span><i class="legend-line"></i> print limit</span><span><i class="legend-cut"></i> straight cut</span></div>
+        <div class="legend"><span><i class="legend-square"></i><span id="cutMarginLegend">Cut margin: 0 mm / side</span></span><span id="artworkLegend" hidden>Dashed inner outline: artwork</span><span><i class="legend-line"></i> print limit</span><span><i class="legend-cut"></i> straight cut</span></div>
         <button id="create" class="btn outline full" disabled>Create working Illustrator layout <span>↗</span></button>
         <p class="helper">The Illustrator output is an editable proof using linked PDFs. It is <strong>not a separated exposure PDF</strong>. Spot inks, trapping, print order and RIP export are not yet validated.</p>
       </section>

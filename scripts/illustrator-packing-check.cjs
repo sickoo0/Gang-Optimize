@@ -4,9 +4,11 @@ const fs=require('node:fs'),path=require('node:path'),cp=require('node:child_pro
 const root=path.resolve(__dirname,'..'),directory=path.join(root,'artifacts/illustrator-packing');
 fs.mkdirSync(directory,{recursive:true});
 const benchmark=JSON.parse(fs.readFileSync(path.join(root,'artifacts/packing-comparison/report.json'),'utf8'));
-const cases=benchmark.rows.filter(r=>['measured-four-cap60','measured-six-cap76','narrow-gap-no-rotation'].includes(r.name))
+const selectedNames=process.argv.includes('--cut-margin-only')?['zero-cut-margin','four-mm-cut-margin']:
+  ['measured-four-cap60','measured-six-cap76','narrow-gap-no-rotation','zero-cut-margin','four-mm-cut-margin'];
+const cases=benchmark.rows.filter(r=>selectedNames.includes(r.name))
   .map(r=>({name:r.name,input:r.input,plan:r.after.plan}));
-assert.equal(cases.length,3,'Run npm run benchmark:packing first');
+assert.equal(cases.length,selectedNames.length,'Run npm run benchmark:packing first');
 const target=path.join(directory,'check.jsx'),output=path.join(directory,'report.json');
 const script=String.raw`#target illustrator
 (function(){
@@ -24,7 +26,7 @@ const script=String.raw`#target illustrator
   try{
     app.userInteractionLevel=UserInteractionLevel.DONTDISPLAYALERTS;
     for(var ci=0;ci<cases.length;ci++){
-      var c=cases[ci],files={},byName={},maximumError=0,rotated=0;
+      var c=cases[ci],files={},byName={},maximumError=0,rotated=0,actualItems=[];
       for(var ji=0;ji<c.input.jobs.length;ji++){
         var j=c.input.jobs[ji],f=File(directory+'/'+c.name+'-'+j.id+'.pdf');
         testDoc=app.documents.add(DocumentColorSpace.CMYK,pt(j.width),pt(j.height));
@@ -46,7 +48,14 @@ const script=String.raw`#target illustrator
       for(var itemIndex=0;itemIndex<testDoc.placedItems.length;itemIndex++){
         var item=testDoc.placedItems[itemIndex],expected=byName[item.name];if(!expected)throw Error('Unexpected artwork item');
         var actual=item.geometricBounds,aw=expected.rotated?expected.artworkH:expected.artworkW,ah=expected.rotated?expected.artworkW:expected.artworkH;
-        var wanted=[pt(expected.x+5),pt(c.plan.settings.sheetH-expected.y-5),pt(expected.x+5+aw),pt(c.plan.settings.sheetH-expected.y-5-ah)];
+        for(var previous=0;previous<actualItems.length;previous++){
+          var other=actualItems[previous];
+          if(actual[0]<other[2]&&actual[2]>other[0]&&actual[1]>other[3]&&actual[3]<other[1])
+            throw Error('Actual Illustrator artwork overlaps another linked PDF');
+        }
+        actualItems.push(actual);
+        var inset=expected.inset;
+        var wanted=[pt(expected.x+inset),pt(c.plan.settings.sheetH-expected.y-inset),pt(expected.x+inset+aw),pt(c.plan.settings.sheetH-expected.y-inset-ah)];
         for(var bi=0;bi<4;bi++){var error=Math.abs(actual[bi]-wanted[bi]);maximumError=Math.max(maximumError,error);if(error>0.1)throw Error('Output differs from preview by '+error+' pt');}
         if(item.file.fsName!==expected.filePath)throw Error('Linked source PDF changed');
         var m=item.matrix;

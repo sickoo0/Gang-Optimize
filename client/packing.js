@@ -73,7 +73,7 @@
     }
     bin.free = pruned;
     var p = { id:unit.id, filePath:unit.filePath, fileName:unit.fileName,
-      artworkW:unit.artworkW, artworkH:unit.artworkH,
+      artworkW:unit.artworkW, artworkH:unit.artworkH, clearance:unit.clearance||0,
       x: best.x, y: best.y, w: best.w, h: best.h,
       rotated: best.rotated, inset: unit.inset, copyIndex: unit.copyIndex };
     bin.placements.push(p);
@@ -110,7 +110,7 @@
       if(rw>EPS)bin.free.push({x:best.x+best.w,y:best.y,w:rw,h:free.h});
       if(rh>EPS)bin.free.push({x:best.x,y:best.y+best.h,w:best.w,h:rh});
     }
-    var p={id:unit.id,filePath:unit.filePath,fileName:unit.fileName,artworkW:unit.artworkW,artworkH:unit.artworkH,
+    var p={id:unit.id,filePath:unit.filePath,fileName:unit.fileName,artworkW:unit.artworkW,artworkH:unit.artworkH,clearance:unit.clearance||0,
       x:best.x,y:best.y,w:best.w,h:best.h,rotated:best.rotated,inset:unit.inset,copyIndex:unit.copyIndex};
     bin.placements.push(p);return p;
   }
@@ -149,7 +149,7 @@
       if(last&&Math.abs(last.x+last.w-next[ni].x)<=EPS&&Math.abs(last.y-next[ni].y)<=EPS)last.w+=next[ni].w;
       else bin.skyline.push(next[ni]);
     }
-    var p={id:unit.id,filePath:unit.filePath,fileName:unit.fileName,artworkW:unit.artworkW,artworkH:unit.artworkH,
+    var p={id:unit.id,filePath:unit.filePath,fileName:unit.fileName,artworkW:unit.artworkW,artworkH:unit.artworkH,clearance:unit.clearance||0,
       x:best.x,y:best.y,w:best.w,h:best.h,rotated:best.rotated,inset:unit.inset,copyIndex:unit.copyIndex};
     bin.placements.push(p);return p;
   }
@@ -159,10 +159,10 @@
     return insertMaxRects(bin,unit,canRotate,strategy==='maxrects-baf'?'baf':strategy==='maxrects-blsf'?'blsf':'bssf');
   }
   function finiteInRange(x, min, max) { return typeof x === 'number' && isFinite(x) && x >= min && x <= max; }
-  function cachedGeometry(width,height,inset){
-    var key=String(width)+'|'+String(height)+'|'+String(inset),found=geometryCache[key];
+  function cachedGeometry(width,height,inset,clearance){
+    var key=String(width)+'|'+String(height)+'|'+String(inset)+'|'+String(clearance),found=geometryCache[key];
     if(found)return found;
-    found={artworkW:width,artworkH:height,inset:inset,cutW:width+2*inset,cutH:height+2*inset,artworkArea:width*height,cutArea:(width+2*inset)*(height+2*inset)};
+    found={artworkW:width,artworkH:height,inset:inset,clearance:clearance,cutW:width+2*inset+clearance,cutH:height+2*inset+clearance,artworkArea:width*height,cutArea:(width+2*inset+clearance)*(height+2*inset+clearance)};
     if(geometryCacheKeys.length>=MAX_GEOMETRY_CACHE){delete geometryCache[geometryCacheKeys.shift()];}
     geometryCache[key]=found;geometryCacheKeys.push(key);return found;
   }
@@ -191,10 +191,10 @@
   // permanently divides a bin.
   function planGroups(config, printingRuns, orderMode, strategy, binMode, orderOverride, packingOrder) {
     var settings=config.settings||{}, sheetW=Number(settings.sheetW),sheetH=Number(settings.sheetH);
-    var edge=Number(settings.edge),inset=Number(settings.inset),rotate=settings.rotate!==false;
+    var edge=Number(settings.edge),inset=Number(settings.inset),clearance=Number(settings.artworkClearance)||0,rotate=settings.rotate!==false;
     var workW=sheetW-2*edge,workH=sheetH-2*edge;
     if(!finiteInRange(sheetW,50,2000)||!finiteInRange(sheetH,50,2000)||
-       !finiteInRange(edge,0,200)||!finiteInRange(inset,0,50)||workW<=0||workH<=0)throw Error('Invalid sheet settings.');
+       !finiteInRange(edge,0,200)||!finiteInRange(inset,0,50)||!finiteInRange(clearance,0,0.5)||workW<=0||workH<=0)throw Error('Invalid sheet settings.');
     if(!Number.isInteger(printingRuns)||printingRuns<1)throw Error('Invalid printing-run count.');
     var jobs=config.jobs||[],groups=[],placementTotal=0;
     if(!jobs.length)return null;
@@ -202,7 +202,7 @@
       var j=jobs[i],w=Number(j.width),h=Number(j.height),orderQ=Number(j.orderQ);
       if(!finiteInRange(w,1,1200)||!finiteInRange(h,1,1200)||!Number.isInteger(orderQ)||orderQ<1)
         throw Error('Check measured dimensions and OrderQ for '+(j.fileName||'PDF')+'.');
-      var copies=Math.ceil(orderQ/printingRuns),geometry=cachedGeometry(w,h,inset),rw=geometry.cutW,rh=geometry.cutH;
+      var copies=Math.ceil(orderQ/printingRuns),geometry=cachedGeometry(w,h,inset,clearance),rw=geometry.cutW,rh=geometry.cutH;
       if(!((rw<=workW+EPS&&rh<=workH+EPS)||(rotate&&rh<=workW+EPS&&rw<=workH+EPS)))return null;
       placementTotal+=copies;
       if(placementTotal>500)return null;
@@ -237,7 +237,7 @@
       for(var bi=0;bi<bins.length;bi++){
         var trial=cloneBin(bins[bi]);
         if(insert(trial,{id:String(g.job.id),filePath:g.job.filePath,fileName:g.job.fileName,
-          artworkW:Number(g.job.width),artworkH:Number(g.job.height),inset:inset,
+          artworkW:Number(g.job.width),artworkH:Number(g.job.height),inset:inset,clearance:clearance,
           w:g.rw,h:g.rh,copyIndex:unit.copyIndex},rotate,strategy)){
           if(!binMode){bins[bi]=trial;placed=true;break;}
           var quality=binQuality(trial,strategy);
@@ -252,7 +252,7 @@
         var bin=createBin(edge,edge,workW,workH),fits=true;
         if(strategy==='guillotine')bin.cuts=Cutting.outerTrimCuts({sheetW:sheetW,sheetH:sheetH,edge:edge});
         if(!insert(bin,{id:String(g.job.id),filePath:g.job.filePath,fileName:g.job.fileName,
-          artworkW:Number(g.job.width),artworkH:Number(g.job.height),inset:inset,
+          artworkW:Number(g.job.width),artworkH:Number(g.job.height),inset:inset,clearance:clearance,
           w:g.rw,h:g.rh,copyIndex:unit.copyIndex},rotate,strategy))fits=false;
         if(!fits)return null;
         bins.push(bin);
@@ -267,7 +267,7 @@
         // other run counts and packing orders instead of aborting the search.
         return null;
     }
-    return {settings:{sheetW:sheetW,sheetH:sheetH,edge:edge,inset:inset,rotate:rotate},
+    return {settings:{sheetW:sheetW,sheetH:sheetH,edge:edge,inset:inset,artworkClearance:clearance,rotate:rotate},
       bins:bins,printingRuns:printingRuns,totalPlacements:placementTotal,
       strategy:strategy,orderMode:orderMode,binMode:binMode,packingOrder:packingOrder||0,
       groupOrder:groups.map(function(g){return String(g.job.id);})};
@@ -275,10 +275,10 @@
   function plan(config) {
     var settings = config.settings || {};
     var sheetW = Number(settings.sheetW), sheetH = Number(settings.sheetH);
-    var edge = Number(settings.edge), inset = Number(settings.inset);
+    var edge = Number(settings.edge), inset = Number(settings.inset),clearance=Number(settings.artworkClearance)||0;
     var rotate = settings.rotate !== false;
     if (!finiteInRange(sheetW, 50, 2000) || !finiteInRange(sheetH, 50, 2000)) throw Error('Invalid sheet size.');
-    if (!finiteInRange(edge, 0, 200) || !finiteInRange(inset, 0, 50)) throw Error('Invalid margins.');
+    if (!finiteInRange(edge, 0, 200) || !finiteInRange(inset, 0, 50)||!finiteInRange(clearance,0,0.5)) throw Error('Invalid margins.');
     var workW = sheetW - 2 * edge, workH = sheetH - 2 * edge;
     if (workW <= 0 || workH <= 0) throw Error('The inner print area is empty.');
     var jobs = config.jobs || [];
@@ -292,14 +292,14 @@
           !Number.isInteger(count) || count < 1 || count > 500) {
         throw Error('Check width, height and copies for ' + (j.fileName || 'PDF') + '.');
       }
-      var rw = w + 2*inset, rh = h + 2*inset;
+      var rw = w + 2*inset+clearance, rh = h + 2*inset+clearance;
       if (!((rw <= workW + EPS && rh <= workH + EPS) ||
           (rotate && rh <= workW + EPS && rw <= workH + EPS))) {
         throw Error('Too large for the print area: ' + (j.fileName || 'PDF'));
       }
       for (var c = 0; c < count; c++) {
         units.push({ id:String(j.id), filePath:j.filePath, fileName:j.fileName,
-          artworkW:w, artworkH:h, inset:inset, w:rw, h:rh, copyIndex:c+1 });
+          artworkW:w, artworkH:h, inset:inset, clearance:clearance,w:rw, h:rh, copyIndex:c+1 });
         totalArtworkArea += w*h;
       }
     }
@@ -329,7 +329,7 @@
       return { index:i, placements:bin.placements, areaPct:Math.round(1000*area/(workW*workH))/10 };
     });
     return {
-      settings:{sheetW:sheetW,sheetH:sheetH,edge:edge,inset:inset,rotate:rotate},
+      settings:{sheetW:sheetW,sheetH:sheetH,edge:edge,inset:inset,artworkClearance:clearance,rotate:rotate},
       sheets:sheets, totalCopies:units.length, sheetCount:sheets.length,
       areaPct:Math.round(1000*occupied/(sheets.length*workW*workH))/10,
       artworkAreaPct:Math.round(1000*totalArtworkArea/(sheets.length*workW*workH))/10,

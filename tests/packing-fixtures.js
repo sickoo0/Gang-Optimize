@@ -8,5 +8,7 @@ module.exports=[
   {name:'measured-six-cap20',settings,jobs:six,mode:'utilization',maxOverproductionPct:20},
   {name:'measured-six-cap76',settings,jobs:six,mode:'utilization',maxOverproductionPct:76},
   {name:'narrow-gap-no-rotation',settings:{...settings,rotate:false},jobs:jobs([[205,140,100],[60,18,100],[35,30,100]]),mode:'utilization',maxOverproductionPct:30},
-  {name:'mixed-aspect-ratios',settings,jobs:jobs([[240,65,100],[95,95,200],[35,15,300],[160,25,100],[55,40,200]]),mode:'utilization',maxOverproductionPct:25}
+  {name:'mixed-aspect-ratios',settings,jobs:jobs([[240,65,100],[95,95,200],[35,15,300],[160,25,100],[55,40,200]]),mode:'utilization',maxOverproductionPct:25},
+  {name:'zero-cut-margin',settings:{...settings,inset:0},jobs:jobs([[190,90,30],[85,40,30],[30,20,30]]),mode:'utilization',maxOverproductionPct:0},
+  {name:'four-mm-cut-margin',settings:{...settings,inset:4},jobs:jobs([[190,90,30],[85,40,30],[30,20,30]]),mode:'utilization',maxOverproductionPct:0}
 ];

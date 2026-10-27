@@ -54,7 +54,7 @@
           var x=f.x+(corner&1?f.w-w:0),y=f.y+(corner&2?f.h-h:0);
           var key=ti+'|'+rot+'|'+x.toFixed(6)+'|'+y.toFixed(6);if(seen[key])continue;seen[key]=true;
           var p={id:t.id,filePath:t.filePath,fileName:t.fileName,artworkW:t.artworkW,artworkH:t.artworkH,
-            inset:t.inset,copyIndex:state.counts[ti]+1,x:x,y:y,w:w,h:h,rotated:!!rot};
+            inset:t.inset,clearance:t.clearance||0,copyIndex:state.counts[ti]+1,x:x,y:y,w:w,h:h,rotated:!!rot};
           var shortFit=Math.min(f.w-w,f.h-h),longFit=Math.max(f.w-w,f.h-h),touch=contact(state,p,work);
           moves.push({p:p,type:ti,short:shortFit,long:longFit,waste:f.w*f.h-w*h,
             touch:touch,group:last&&last.id===t.id?1:0,area:w*h});stats.placementCandidates++;
@@ -143,8 +143,10 @@
     var stats=options.stats||{placementCandidates:0,expandedStates:0,certifications:0,unsliceablePruned:0,localIterations:0},
       startedStates=stats.expandedStates,started=Date.now(),deadline=options.deadline||Date.now()+1000,phaseDeadline=deadline;
     var control={width:options.width||10,stats:stats,alive:function(){return Date.now()<phaseDeadline&&stats.expandedStates-startedStates<(options.maxStates||18000);}};
+    var clearance=Number(settings.artworkClearance)||0;
     var types=jobs.map(function(j){return {id:String(j.id),filePath:j.filePath,fileName:j.fileName,
-      artworkW:j.width,artworkH:j.height,inset:inset,w:j.width+2*inset,h:j.height+2*inset};});
+      artworkW:j.width,artworkH:j.height,inset:inset,clearance:clearance,
+      w:j.width+2*inset+clearance,h:j.height+2*inset+clearance};});
     var required=jobs.map(function(j){return Math.ceil(j.orderQ/runs);}),limits=jobs.map(function(j){return Math.min(MAX_PLACEMENTS,Math.floor((j.orderQ*(1+cap/100)+1e-9)/runs));});
     if(required.some(function(n,i){return n>limits[i];})||required.reduce(function(a,b){return a+b;},0)>MAX_PLACEMENTS||
       required.reduce(function(sum,n,i){return sum+n*types[i].w*types[i].h;},0)>work.w*work.h+EPS)return null;

@@ -69,7 +69,9 @@
     return !!ok;
   }
   function cuttable(plan){
+    var settings=plan&&plan.settings||{},requiredClearance=Number(settings.inset)===0?0.1:0;
     return !!(window.BytebaseCutting&&plan&&plan.sheetCount===1&&plan.sheets&&plan.sheets.length===1&&
+      Math.abs((Number(settings.artworkClearance)||0)-requiredClearance)<0.000001&&
       window.BytebaseCutting.verifyGuillotineCuts(plan.settings,plan.sheets[0].placements,plan.sheets[0].cuts));
   }
   function restoreSession(){
@@ -171,7 +173,7 @@
       var path=extensionHostPath(),encoded=encodeURIComponent(path);
       var expression='(function(){try{var f=new File(decodeURIComponent('+JSON.stringify(encoded)+'));'+
         'if(!f.exists)throw Error("host.jsx is missing");$.evalFile(f);'+
-        'if(!$.global.Bytebase||typeof $.global.Bytebase.createLayout!=="function"||$.global.Bytebase.__hostBuild!=="single-sheet-v1")throw Error("host.jsx did not refresh the Illustrator-global handler");'+
+        'if(!$.global.Bytebase||typeof $.global.Bytebase.createLayout!=="function"||$.global.Bytebase.__hostBuild!=="variable-cut-margin-v2")throw Error("host.jsx did not refresh the Illustrator-global handler");'+
         'return "BYTEBASE_RELOAD_OK";}catch(e){return "BYTEBASE_RELOAD_ERROR: "+String(e.message||e)+" (line "+(e.line||"?")+")";}})()';
       var completed=false,timer=setTimeout(function(){
         if(completed)return;completed=true;button.disabled=false;
@@ -513,7 +515,7 @@
         ctx.strokeStyle='#567187';ctx.lineWidth=.7;ctx.strokeRect(x,y,w,h);
         // The inner outline is the same unscaled artwork box placed by JSX.
         var inset=p.inset*ratio;
-        ctx.setLineDash([2,2]);ctx.strokeRect(x+inset,y+inset,w-2*inset,h-2*inset);ctx.setLineDash([]);
+        if(inset>0){ctx.setLineDash([2,2]);ctx.strokeRect(x+inset,y+inset,w-2*inset,h-2*inset);ctx.setLineDash([]);}
         if(w>40&&h>21){ctx.fillStyle='#132638';ctx.font='bold 10px Segoe UI,Arial';
           ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText((p.fileName||'PDF').replace(/\.pdf$/i,'').slice(0,13),x+w/2,y+h/2,w-4);}
       });
@@ -528,6 +530,9 @@
       ctx.fillStyle='#66798f';ctx.font='11px Segoe UI,Arial';ctx.textAlign='center';ctx.textBaseline='middle';
       ctx.fillText('Your sheet preview appears here',physicalWidth/2,physicalHeight/2);
     }
+    var shownInset=latest?Number(latest.settings.inset):num($('inset').value);
+    $('cutMarginLegend').textContent='Cut margin: '+(isFinite(shownInset)?shownInset:'–')+' mm / side';
+    $('artworkLegend').hidden=!(shownInset>0);
     $('sheetIndex').textContent=latest?(selectedSheet+1)+' / '+latest.sheetCount:'– / –';
     $('prev').disabled=!latest||selectedSheet===0;$('next').disabled=!latest||selectedSheet===latest.sheetCount-1;
   }
@@ -538,7 +543,6 @@
     if(!cuttable(latest)){
       setStatus('Recalculate first: Illustrator requires a verified guillotine cut sequence on every sheet. Imported PDFs remain loaded.','error');return;
     }
-    if(!window.confirm('Create a WORKING layout in Illustrator?\n\nThis is not production-ready: no separation/RIP validation has been done.\nSource PDF files will remain linked and untouched.')) return;
     saveSession('before Illustrator document creation');
     if(window.console&&console.info)console.info('[BYTEBASE generation] starting',{jobs:jobs.length,sheets:latest.sheetCount,placements:latest.totalCopies});
     $('create').disabled=true;setStatus('Creating working layout. Illustrator may be busy...');
