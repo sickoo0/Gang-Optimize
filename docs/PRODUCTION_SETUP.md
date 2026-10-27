@@ -195,3 +195,21 @@ not constitute approval of actual production artwork.
 Native JSON export uses Illustrator's Save dialog; browser export uses a download. The OS Save
 dialog, re-opening a saved AI document and approved customer reference comparisons remain manual
 acceptance checks. No production separation PDF has been generated or validated.
+
+### Final verification before development-branch push
+
+On 27 October 2026, the existing implementation commit `4b390b8` was resumed with a clean
+working tree. All five test commands above were rerun successfully: 19 unit/regression tests,
+9 browser scenarios, 8 benchmark datasets, 5 real Illustrator packing cases and 18 real
+Illustrator production checks. No implementation fix was required by this rerun.
+
+The live CEP Reload Panel check preserved the three imported jobs, quantities and 2 mm cut
+margin. Calculate Layout then produced one sheet with 14 placements, five printing runs,
+70 produced transfers, zero overproduction and 69.7% cut-box utilization. The create button
+became enabled; the debugger recorded no runtime errors. This checks calculation and session
+recovery with the current inputs, not approval of their inks or separation output.
+
+The optimizer, beam search, quantity planner, host placement geometry and cutting engine were
+also confirmed unchanged against baseline `75a0f2b`. Syntax checks and `git diff --check`
+passed. The physical calibration, native Save dialog, saved-AI reopening and actual separation
+validation requirements above remain outstanding.
