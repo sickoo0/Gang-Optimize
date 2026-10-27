@@ -13,7 +13,7 @@ Panelet har nu **04 — Production Setup** og **05 — Export & Validation**. Pa
 3. Kontrollér de faktisk anvendte farver i alle kilde-PDF'er. Ressourcer kan være ubrugte eller tilhøre andre sider; analysen giver kandidater, ikke en godkendt separationsliste. Ret listen, én farve pr. linje, og bekræft kontrollen.
 4. Flyt almindelige farver med træk/slip eller pile. MASCOT låser White-BG næstsidst og Lim sidst, når de findes. De tilføjes aldrig automatisk, hvis de mangler.
 5. Vælg **Full sequence** eller **Current frame**. Eksempel: `1/5 280c  2/5 485c  3/5 7616c  4/5 hvid  5/5 lim`.
-6. Tryk **Create working Illustrator layout** i sektion 03. Dokumentet indeholder linkede originaler, sorte proof-mærker, tekst som vektorkonturer og en separat ikke-printende guide-layer. Kontrollér og gem AI-filen i Illustrator.
+6. Tryk **Create working Illustrator layout** i sektion 03. Hvis inkene ikke er bekræftet, fører panelet dig til verificeringen i sektion 04; oprettelsen starter først, når listen er bekræftet. Dokumentet indeholder linkede originaler, sorte proof-mærker, tekst som vektorkonturer og en separat ikke-printende guide-layer. Kontrollér og gem AI-filen i Illustrator.
 7. **Update marks in active generated sheet** erstatter kun pluginets egne, uændrede produktionslag. Manuelle ændringer af mærker eller artwork udløser en fejl; opret et nyt arbejdsark i stedet.
 
 Avanceret opsætning indeholder profiloprettelse/kopiering/navngivning, JSON-import/eksport,

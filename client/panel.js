@@ -544,7 +544,9 @@
   $('create').addEventListener('click',function(){
     if(!latest||demoMode) return;
     var productionRequest=null;
-    try{if(setupUI)productionRequest=setupUI.request(true);}catch(e){setStatus(e.message,'error');return;}
+    try{if(setupUI)productionRequest=setupUI.request(true);}catch(e){setStatus(e.message,'error');
+      if(/verify the ink list/i.test(e.message)){var verifyControl=$('verifyInks');if(verifyControl){verifyControl.scrollIntoView({behavior:'smooth',block:'center'});verifyControl.focus();}}
+      return;}
     if(!cuttable(latest)){
       setStatus('Recalculate first: Illustrator requires a verified guillotine cut sequence on every sheet. Imported PDFs remain loaded.','error');return;
     }

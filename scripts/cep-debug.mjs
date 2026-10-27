@@ -144,7 +144,7 @@ try {
     });
     await page.waitForFunction(() => {
       const status = document.querySelector('#status')?.textContent || '';
-      return /^(Created and verified |Layout generation failed:)/.test(status);
+      return /^(Created and verified |Layout generation failed:|Verify the ink list)/i.test(status);
     }, null, { timeout: 60000 });
     report.creationResult = await capturePanel(page);
     await page.screenshot({ path: path.join(artifacts, `${stamp}-created-layout.png`), fullPage: true, timeout: 5000 }).catch(error =>
@@ -153,6 +153,8 @@ try {
   report.after = await capturePanel(page);
   await page.screenshot({ path: path.join(artifacts, `${stamp}-after.png`), fullPage: true, timeout: 5000 }).catch(error =>
     report.errors.push({ type: 'screenshot', text: redact(error.message) }));
+  if (report.creationResult?.status?.startsWith('Verify the ink list'))
+    report.events.push({ type: 'generation-blocked', text: 'The panel received the Create click and directed the user to manually verify PDF ink candidates before Illustrator generation.' });
   if (report.creationResult?.status?.startsWith('Layout generation failed:'))
     report.errors.push({ type: 'generation', text: redact(report.creationResult.status) });
   if (report.after?.status?.startsWith('Calculation failed:') && !calculate) report.result = 'Panel loaded; calculation not requested.';
