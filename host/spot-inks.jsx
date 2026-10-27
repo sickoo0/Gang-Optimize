@@ -9,21 +9,27 @@ var BytebaseSpotInks=(function(){
     for(var i=0;i<a.values.length;i++)if(Math.abs(a.values[i]-definition.values[i])>0.1)return false;return true;}
   function sameSourceAlternate(ink,definition){var a=ink.alternate;if(!a||a.space!==definition.space||a.values.length!==definition.values.length)return false;
     for(var i=0;i<a.values.length;i++)if(Math.abs(a.values[i]*100-definition.values[i])>0.05)return false;return true;}
-  function resolve(doc,sequence,profile,created,json){var result={},signature=[];
+  function resolve(doc,sequence,profile,created,json){var result={},signature=[],sequenceNames={};
+    for(var ri=0;ri<sequence.length;ri++)sequenceNames['$'+sequence[ri].name]=true;
+    if(profile.id==='mascot'){
+      var missing=[];for(ri=0;ri<profile.inks.required.length;ri++)if(!sequenceNames['$'+profile.inks.required[ri]])missing.push(profile.inks.required[ri]);
+      if(missing.length)throw Error('Missing required MASCOT source inks: '+missing.join(', '));
+    }
     for(var i=0;i<sequence.length;i++){
       var ink=sequence[i],name=ink.name,definition=profile.inks.spots[name],found=null,count=0;
-      for(var j=0;j<doc.spots.length;j++)if(doc.spots[j].name===name){found=doc.spots[j];count++;}
-      if(count>1)throw Error('Multiple Illustrator spots named '+name+'; resolve the ambiguity in the source artwork');
+      for(var j=0;j<doc.spots.length;j++)if(doc.spots[j].name===name){if(!found)found=doc.spots[j];count++;if(profile.id==='mascot'&&doc.spots[j].colorType!==ColorModel.SPOT)throw Error(name+' is not an Illustrator Spot Color');}
+      if(count>1&&profile.id!=='mascot')throw Error('Multiple Illustrator spots named '+name+'; resolve the ambiguity in the source artwork');
       for(j=0;j<doc.swatches.length;j++)if(doc.swatches[j].name===name&&doc.swatches[j].color.typename!=='SpotColor')
         throw Error('A process swatch is named '+name+'; resolve the color conflict before creating the sheet');
       if(!found){
+        if(profile.id==='mascot')throw Error('Missing source Spot Color for '+name+'. MASCOT inks must already exist in the imported production PDFs; no spot or artwork was created.');
         if(!definition||definition.space!=='CMYK'||!ink.source||ink.source.indexOf('PDF ')!==0||!sameSourceAlternate(ink,definition))
           throw Error('No matching source Spot Color for '+name+'. Inspect the linked PDF and verify its exact spot definition; no approximate swatch was created.');
         var c=new CMYKColor();c.cyan=definition.values[0];c.magenta=definition.values[1];c.yellow=definition.values[2];c.black=definition.values[3];
         found=doc.spots.add();created.push(found);found.name=name;found.colorType=ColorModel.SPOT;found.color=c;
       }
       if(found.colorType!==ColorModel.SPOT)throw Error(name+' is not an Illustrator Spot Color');
-      if(definition&&!matches(found,definition))throw Error(name+' source Spot Color does not match profile '+definition.space+' '+definition.values.join('/')+'; found '+String(found.spotKind)+' '+(alternate(found)?alternate(found).values.join('/'):'unknown')+'. Correct the source or use an explicitly approved profile.');
+      if(profile.id!=='mascot'&&definition&&!matches(found,definition))throw Error(name+' source Spot Color does not match profile '+definition.space+' '+definition.values.join('/')+'; found '+String(found.spotKind)+' '+(alternate(found)?alternate(found).values.join('/'):'unknown')+'. Correct the source or use an explicitly approved profile.');
       result[name]=found;signature.push(describe(found));
     }
     signature.sort(function(a,b){return a.name<b.name?-1:a.name>b.name?1:0;});

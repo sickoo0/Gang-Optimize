@@ -14,7 +14,7 @@
       marks:[mark('left-upper','sheet:top-left',10,35),mark('left-second','sheet:top-left',10,65),mark('right-upper','sheet:top-right',-10,35),mark('right-second','sheet:top-right',-10,65),mark('left-bottom','sheet:bottom-left',10,-10),mark('right-bottom','sheet:bottom-right',-10,-10),mark('left-dot','sheet:left',10,0,'dot'),mark('right-dot','sheet:right',-10,0,'dot')],
       boundary:{visible:true,production:false,color:'#df3dce',stroke:0.2},
       text:{enabled:true,zone:'main',anchor:'sheet:bottom-left',x:20,y:-15,width:660,height:10,font:'ArialMT',size:10,align:'left',rotation:0,mode:'full',legend:'repeat',separator:'  ',format:'{index}/{total} {ink}',prefix:'',suffix:'',displayColors:true,showJob:false,showSheet:false,showRuns:false},
-      inks:{aliases:{'White-BG':'White-BG',Lim:'Lim'},labels:{'White-BG':'hvid',Lim:'lim'},tail:['White-BG','Lim'],lockTail:true,required:[],missing:'warn',colors:{'White-BG':'#A7A9AC',Lim:'#FFF200'},spots:{'White-BG':{space:'CMYK',values:[0,0,0,40]},Lim:{space:'CMYK',values:[0,0,100,0]}}},frameName:'{index}-{ink}',exportOptions:{ripEnabled:false,pipeline:'unverified'},company:{}};
+      inks:{aliases:{'White-BG':'White-BG',Lim:'Lim'},labels:{'White-BG':'hvid',Lim:'lim'},tail:['White-BG','Lim'],lockTail:true,required:['White-BG','Lim'],missing:'block',colors:{'White-BG':'#A7A9AC',Lim:'#FFF200'},spots:{'White-BG':{space:'CMYK',values:[0,0,0,40]},Lim:{space:'CMYK',values:[0,0,100,0]}}},frameName:'{index}-{ink}',exportOptions:{ripEnabled:false,pipeline:'unverified'},company:{}};
     p.marks[6].width=p.marks[6].height=p.marks[7].width=p.marks[7].height=1;
     var g=clone(p);g.id='generic';g.name='Generic — Simple';g.calibration='Configure and validate for your press';g.marks=[mark('top-left','sheet:top-left',10,10,'cross'),mark('bottom-right','sheet:bottom-right',-10,-10,'cross')];g.inks={aliases:{},labels:{},tail:[],lockTail:false,required:[],missing:'warn',colors:{},spots:{}};
     var c=clone(g);c.id='custom';c.name='Custom Company Profile';return [p,g,c];
@@ -22,10 +22,10 @@
   function migrate(p){p=clone(p);if(p.schemaVersion===1){p.schemaVersion=2;if(!p.references)p.references={};if(!p.assets)p.assets={};if(!p.zones)p.zones=[{id:'main',reference:'print'}];}if(p.schemaVersion!==2)throw Error('Unsupported profile version');
     if(!p.inks.spots)p.inks.spots={};
     if(p.id==='mascot'){
-      // Upgrade saved MASCOT profiles from display-only swatches to its fixed spot definitions.
+      // Keep the approved MASCOT references and enforce its mandatory source ink policy.
       p.inks.spots['White-BG']={space:'CMYK',values:[0,0,0,40]};p.inks.spots.Lim={space:'CMYK',values:[0,0,100,0]};
       p.inks.colors['White-BG']='#A7A9AC';p.inks.colors.Lim='#FFF200';
-      p.inks.tail=['White-BG','Lim'];p.inks.lockTail=true;
+      p.inks.tail=['White-BG','Lim'];p.inks.lockTail=true;p.inks.required=['White-BG','Lim'];p.inks.missing='block';
     }
     return p;}
   function sheet(p){return rect(0,0,p.sheet.width,p.sheet.height);}
@@ -165,7 +165,14 @@
   function compose(raw,inks,layout,options){var p=validate(raw),g=geometry(p),seq=sequence(inks,p),o=options||{},frames=[],frame=Number(o.frame)||0;
     if(frame<0||frame>=Math.max(1,seq.inks.length)||Math.floor(frame)!==frame)throw Error('Invalid current frame');
     var errors=[],warnings=[];if(seq.missing.length)(seq.blocked?errors:warnings).push('Missing required inks: '+seq.missing.join(', '));if(!seq.inks.length)warnings.push('No verified ink sequence');if(!o.verified)warnings.push('Ink usage requires manual verification for every source PDF');
-    for(var ci=0;ci<seq.inks.length;ci++){var entry=seq.inks[ci],definition=p.inks.spots[entry.name];if(entry.conflict)errors.push('Conflicting PDF alternate definitions for '+entry.name);if(definition&&!expectedAlternate(entry.alternate,definition))errors.push(entry.name+' PDF spot alternate differs from profile '+definition.space+' '+definition.values.join('/'));
+    for(var ci=0;ci<seq.inks.length;ci++){var entry=seq.inks[ci],definition=p.inks.spots[entry.name],alternateMismatch=definition&&!expectedAlternate(entry.alternate,definition);
+      if(p.id==='mascot'){
+        if(entry.conflict)warnings.push('PDF display alternates for '+entry.name+' differ; the named source Spot Color and linked artwork are preserved unchanged.');
+        else if(alternateMismatch)warnings.push(entry.name+' PDF display alternate differs from the approved profile reference; the named source Spot Color and linked artwork are preserved unchanged.');
+      }else{
+        if(entry.conflict)errors.push('Conflicting PDF alternate definitions for '+entry.name);
+        if(alternateMismatch)errors.push(entry.name+' PDF spot alternate differs from profile '+definition.space+' '+definition.values.join('/'));
+      }
     }
     for(var tm=0;tm<g.marks.length;tm++)if(p.text.enabled&&g.marks[tm].production&&intersects(g.marks[tm].bounds,g.textBounds))errors.push('Frame text overlaps mark '+g.marks[tm].id);
     if(layout){var s=layout.settings;if(s.sheetW!==p.sheet.width||s.sheetH!==p.sheet.height||s.edge!==p.sheet.edge||s.inset!==p.sheet.cutMargin)errors.push('Profile geometry changed: recalculate layout');

@@ -24,7 +24,7 @@ row has different technical clearance across versions; compare artwork coverage 
 | `client/setup-ui.js` | Company profiles, mark/text editors, JSON advanced editor, SVG import/export, swatches, drag/reorder, verification and persistence |
 | `client/pdf-inks.js` | Read-only PDF object inspection using bundled pdf-lib 1.17.1 |
 | `client/vendor/` | Offline MIT-licensed pdf-lib bundle and license; no CDN or runtime install |
-| `host/spot-inks.jsx` | Reuse linked-PDF Illustrator Spot objects, check definitions and reject color conflicts |
+| `host/spot-inks.jsx` | Reuse linked-PDF Illustrator Spot objects; enforce source-ink identity and reject process-color conflicts |
 | `client/index.html`, `styles.css` | Sections 04/05 and compact production controls |
 | `client/panel.js`, `session.js` | Bridge payload, shared preview overlay, profile lifecycle and session v4 migration |
 | `host/production-artwork.jsx` | Installed-font check, exact vector paths, outlined labels, isolated layers and transactional updates |
@@ -123,19 +123,30 @@ can be present. Unsupported, encrypted, malformed or over-limit PDFs explicitly 
 verification. Limits: 50 MB, 100,000 visited objects, nesting depth 80. A manually verified list
 is required before production artwork is generated. This is not a separation-use validator.
 
-The MASCOT profile fixes `White-BG` at a CMYK alternate of 0/0/0/40 and `Lim` at 0/0/100/0;
-both must be Illustrator Spot Colors with those exact names. Its tail ordering is mandatory.
-Existing linked-PDF spots are reused if their definitions match. Wrong definitions and conflicting
-same-name alternatives fail preflight without rewriting source artwork or fabricating a process
-color. A missing MASCOT spot may be created only when the manually verified PDF candidate carries
-the exact required CMYK alternate. Other company profiles can specify their own spot definitions.
+MASCOT requires the named source Spot Colors `White-BG` and `Lim`; missing either blocks working-sheet
+creation. Identical named inks across source jobs share one frame, regardless of logo/placement count
+or differences in PDF fallback values. Ordinary named inks, including any separate blocker ink,
+remain individual frames. Normal inks come first, `White-BG` second-last and `Lim` last. The approved MASCOT alternate references
+(White-BG CMYK 0/0/0/40; Lim CMYK 0/0/100/0) and preview swatches are retained as profile values;
+they are not used to recolor or replace imported PDF separations.
 
-On the current three imported development PDFs, Illustrator exposes `White-BG` with 0/0/0/0 and
-`Lim` as an RGB-kind spot. The MASCOT profile therefore rejects this set until the spot definitions
-are corrected in approved source artwork or another explicitly approved production profile is used.
-Their names alone are insufficient for MASCOT acceptance.
+PDF Separation color spaces identify an ink by its named colorant and provide an alternate color
+space/tint transform to approximate its appearance on devices without that colorant. DeviceN
+similarly has an alternate for appearance. Therefore a CMYK/RGB alternate mismatch alone does not
+prove that a named spot separation is missing or incorrectly named. For MASCOT, the plugin reports
+alternate differences as warnings and reuses the imported Illustrator Spot Color. It does not
+create a missing White-BG or Lim spot, change its alternate, or modify the placed PDF. Other company
+profiles retain their configured definition checks.
 
-References: [Adobe PDF reference, color spaces](https://opensource.adobe.com/dc-acrobat-sdk-docs/pdfstandards/pdfreference1.4.pdf),
+For the three current development PDFs, read-only PDF inspection finds `White-BG` as a named
+Separation with a CMYK alternate of 0/0/0/0, and `Lim` as a named Separation/DeviceN colorant with an
+RGB alternate of 100/100/49.8. An Illustrator import probe exposes those names as Spot Colors with
+the corresponding CMYK/RGB kinds. This is consistent with the PDF alternates being preview/fallback
+values, not evidence that the named source inks are absent. The parser still reports color-space
+candidates, not proof that a colorant is used on a visible page; user verification remains required.
+
+References: [Adobe PDF Reference 1.6, color spaces](https://opensource.adobe.com/dc-acrobat-sdk-docs/pdfstandards/pdfreference1.6.pdf),
+[Adobe PDF Reference 1.7, color spaces](https://opensource.adobe.com/dc-acrobat-sdk-docs/pdfstandards/pdfreference1.7old.pdf),
 [pdf-lib parser source](https://github.com/Hopding/pdf-lib/blob/master/src/core/parser/PDFParser.ts).
 
 ## Separation boundary / next backend
@@ -229,24 +240,25 @@ also confirmed unchanged against baseline `75a0f2b`. Syntax checks and `git diff
 passed. The physical calibration, native Save dialog, saved-AI reopening and actual separation
 validation requirements above remain outstanding.
 
-### MASCOT spot-color update, 27 October 2026
+### MASCOT source-ink policy clarification, 27 October 2026
 
-The working Illustrator document now assigns every outlined legend entry to its source Spot
-object at 100% tint. Production registration marks are repeated at identical coordinates in
-each frame's Spot color. MASCOT enforces the exact CMYK alternate values, preview colors and
-White-BG/Lim tail order. A mismatched existing spot or contradictory PDF alternate fails before
-production layers are committed; no linked source PDF is modified.
+MASCOT migration now requires both source inks and blocks creation if either is absent. Existing
+saved MASCOT profiles receive this rule and preserve the approved alternate references, preview
+colors and locked tail order. Non-MASCOT company profiles keep their own saved requirements and
+color definitions. MASCOT accepts a correctly named imported Spot Color even when its PDF fallback
+alternate uses a different color space/value; the warning remains visible, and the source Spot and
+linked artwork remain unchanged. Missing specials are never fabricated.
 
-The current development-machine rerun passed `npm test` (20 tests),
-`npm run test:browser` (9 scenarios), `npm run benchmark:packing` (8 datasets), and
-`npm run test:illustrator:packing` (5 real Illustrator cases). The production Illustrator
-integration passed 35 checks with five actual source Spot objects: exact special definitions,
-100% matching source spots in all legend entries and registration marks, no process color in
-generated production layers, renumbering after reorder, gated creation of a missing special,
-mismatch rejection, rollback and unchanged fixture PDF hash. The live CEP debugger reloaded the panel without recorded runtime
-errors and preserved three jobs and a 22-placement layout. Clicking Create with these PDFs
-reported the White-BG and Lim alternate-definition mismatches before generating a document.
+Regression coverage includes a two-frame white-only job, four Pantones plus White-BG/Lim, repeated
+logos sharing the same named inks, either missing mandatory ink, and an independent blocker ink.
+The Illustrator integration checks source Spot identity, 100% legend/mark tint, unchanged special
+definitions, rollback, linked artwork geometry, and a byte-for-byte unchanged generated source
+fixture PDF. RIP export remains disabled. Actual page-use verification, approved template
+calibration, physical checks, and validated separation output remain outstanding.
 
-Remaining acceptance requires approved source PDFs with matching special-ink definitions,
-known-good separated output/reference PDFs, physical MASCOT template calibration, and saved-AI
-reopen/print checks. The working AI sheet is editable, but RIP exposure export remains disabled.
+Final development-machine verification on 27 October 2026 passed 26 unit/regression tests, 9 browser
+scenarios, 8 packing benchmark datasets, 5 real Illustrator packing cases and 37 real Illustrator
+production checks. The live CEP panel reloaded and created one working artboard with all 14 linked
+placements; Illustrator reported three named source plates (Lim, PANTONE 7416 C, White-BG), with
+the actual PDF source links preserved. The saved review file remains a working Illustrator sheet,
+not an approved RIP separation.

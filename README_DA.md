@@ -11,9 +11,9 @@ Panelet har nu **04 — Production Setup** og **05 — Export & Validation**. Pa
 1. Vælg **MASCOT — Single Frame**, **Generic — Simple** eller en gemt firmaprofil i sektion 04.
 2. Importér PDF'erne og beregn layoutet som hidtil. PDF-farveressourcer læses automatisk efter målingen. **Read PDF ink candidates** kører analysen igen.
 3. Kontrollér de faktisk anvendte farver i alle kilde-PDF'er. Ressourcer kan være ubrugte eller tilhøre andre sider; analysen giver kandidater, ikke en godkendt separationsliste. Ret listen, én farve pr. linje, og bekræft kontrollen.
-4. Flyt almindelige farver med træk/slip eller pile. MASCOT låser White-BG næstsidst og Lim sidst, når de findes. Der tilføjes ikke en ramme for en farve, som ikke er bekræftet i kilde-PDF'erne.
+4. Flyt almindelige farver med træk/slip eller pile. MASCOT kræver `White-BG` og `Lim`, låser White-BG næstsidst og Lim sidst og behandler andre spots, fx en separat blocker, som egne rammer.
 5. Vælg **Full sequence** eller **Current frame**. Eksempel: `1/5 280c  2/5 485c  3/5 7616c  4/5 hvid  5/5 lim`.
-6. Tryk **Create working Illustrator layout** i sektion 03. Hvis inkene ikke er bekræftet eller en MASCOT-spotfarve har en forkert definition, viser panelet fejlen i sektion 04. Dokumentet indeholder linkede originaler, registreringsmærker og vektortekst i de tilsvarende 100 % spotfarver samt et separat ikke-printende guidelag. Kontrollér og gem AI-filen i Illustrator.
+6. Tryk **Create working Illustrator layout** i sektion 03. Hvis inkene ikke er bekræftet, eller en af de to obligatoriske MASCOT-spots mangler i de importerede PDF'er, blokeres oprettelsen. Dokumentet indeholder linkede originaler, registreringsmærker og vektortekst i de tilsvarende 100 % spotfarver samt et separat ikke-printende guidelag. Kontrollér og gem AI-filen i Illustrator.
 7. **Update marks in active generated sheet** erstatter kun pluginets egne, uændrede produktionslag. Manuelle ændringer af mærker eller artwork udløser en fejl; opret et nyt arbejdsark i stedet.
 
 Avanceret opsætning indeholder profiloprettelse/kopiering/navngivning, JSON-import/eksport,
@@ -22,11 +22,12 @@ gentagelser, referencespunkter, aliaser, farver, obligatoriske farver og ekspone
 legend-regler. Profilen valideres ved gemning. Geometriændringer kræver ny layoutberegning;
 rene udseendeændringer beholder resultatet. Profiler og farver gemmes også uden importerede PDF'er.
 
-MASCOT kræver `White-BG` som Spot Color med CMYK-alternativ 0/0/0/40 og `Lim` som Spot Color
-med 0/0/100/0. Forhåndsvisningen bruger henholdsvis `#A7A9AC` og `#FFF200`. Alternativværdierne
-beskriver visningen, ikke procestyrken på en plade. Hvert nummereret tekstsegment bruger den
-tilsvarende spotfarve fra Illustrator med 100 % tint. Hvis en kilde-PDF importerer en spotfarve
-med forkert definition, stopper oprettelsen og viser forskellen. Original-PDF'en ændres ikke.
+MASCOTs godkendte profilreferencer for `White-BG` og `Lim` forbliver henholdsvis CMYK 0/0/0/40 og
+0/0/100/0, og forhåndsvisningen bruger `#A7A9AC` og `#FFF200`. PDF'ernes alternative CMYK/RGB-
+farver er fallback-visning; de afgør ikke identiteten af en navngiven Separation/DeviceN-spot.
+Panelet genbruger derfor de eksisterende importerede Spot Colors og viser advarsel ved afvigende
+fallback. Det opretter aldrig manglende `White-BG`/`Lim` og ændrer ikke separationerne. Hvert
+nummereret tekstsegment bruger den tilsvarende importerede spotfarve fra Illustrator med 100 % tint.
 
 SVG-import understøtter et kontrolleret udsnit: linjer, rektangler, cirkler og ellipser med
 viewBox og sort/ingen fyld/streg. Paths, CSS, grupper, transformationer, scripts og eksterne

@@ -31,24 +31,56 @@ test('restricted SVG vectors preserve proportions and reject unsafe input',()=>{
   for(const bad of ['<svg><script/></svg>','<svg viewBox="0 0 10 10"><image href="https://x"/></svg>',svg.replace('cx="5"','onclick="x"'),svg.replace('fill="none"','style="fill:red"'),svg.replace('r="4"','r="40"'),'<!DOCTYPE svg>'+svg])assert.throws(()=>S.parseSVG(bad));
 });
 test('legend assignment, missing optional inks and display-only color',()=>{
-  const p=S.defaults()[0];p.text.legend='per-ink';let r=S.compose(p,['280c','Lim']);assert.equal(r.frames[1].label.text,'2/2 lim');assert.equal(r.frames[0].marks.length,r.frames[1].marks.length);
+  const p=S.defaults()[1];p.inks.colors.Lim='#FFF200';p.text.legend='per-ink';let r=S.compose(p,['280c','Lim']);assert.equal(r.frames[1].label.text,'2/2 Lim');assert.equal(r.frames[0].marks.length,r.frames[1].marks.length);
   assert.equal(r.sequence[1].color,'#FFF200');assert.equal(S.swatch({name:'x',alternate:{space:'CMYK',values:[1,0,0,0]}},p),'#00ffff');
   assert.equal(S.compose(p,['280c']).sequence.length,1);
 });
-test('MASCOT special spots retain exact definitions and multi-color logos yield unique ordered frames',()=>{
+test('MASCOT special spots retain approved references and multi-color logos yield unique ordered frames',()=>{
   const p=S.defaults()[0];assert.deepEqual(p.inks.spots['White-BG'],{space:'CMYK',values:[0,0,0,40]});
   assert.deepEqual(p.inks.spots.Lim,{space:'CMYK',values:[0,0,100,0]});
   assert.equal(p.inks.colors['White-BG'],'#A7A9AC');assert.equal(p.inks.colors.Lim,'#FFF200');
+  assert.deepEqual(p.inks.required,['White-BG','Lim']);assert.equal(p.inks.missing,'block');
   const names=['PANTONE 356 C','PANTONE 360 C','PANTONE 152 C','PANTONE 356 C','PANTONE 299 C','Lim','White-BG'];
   let r=S.compose(p,names,null,{verified:true});assert.deepEqual(r.sequence.map(i=>i.name),['PANTONE 356 C','PANTONE 360 C','PANTONE 152 C','PANTONE 299 C','White-BG','Lim']);
+  assert.deepEqual(r.errors,[]);
   assert.equal(r.label.text,'1/6 356c  2/6 360c  3/6 152c  4/6 299c  5/6 hvid  6/6 lim');
   assert.deepEqual(r.frames.map(f=>f.label.text),['1/6 356c','2/6 360c','3/6 152c','4/6 299c','5/6 hvid','6/6 lim']);
   r=S.compose(p,['Lim','White-BG','PANTONE 299 C','PANTONE 356 C'],null,{verified:true});assert.equal(r.label.text,'1/4 299c  2/4 356c  3/4 hvid  4/4 lim');
   const old=S.defaults()[0];delete old.inks.spots;old.inks.colors['White-BG']='#ffffff';assert.equal(S.validate(old).inks.colors['White-BG'],'#A7A9AC');
   const wrong=S.compose(p,[{name:'White-BG',alternate:{space:'CMYK',values:[0,0,0,0]}},{name:'Lim',alternate:{space:'RGB',values:[1,1,0]}}],null,{verified:true});
-  assert.match(wrong.errors.join(' '),/White-BG.*differs/);assert.match(wrong.errors.join(' '),/Lim.*differs/);
-  const conflict=S.compose(p,[{name:'PANTONE 356 C',alternate:{space:'CMYK',values:[0,1,0,0]}},{name:'PANTONE 356 C',alternate:{space:'CMYK',values:[0,0,1,0]}}],null,{verified:true});
+  assert.deepEqual(wrong.errors,[]);assert.match(wrong.warnings.join(' '),/White-BG PDF display alternate differs/);assert.match(wrong.warnings.join(' '),/Lim PDF display alternate differs/);
+  const conflict=S.compose(S.defaults()[1],[{name:'PANTONE 356 C',alternate:{space:'CMYK',values:[0,1,0,0]}},{name:'PANTONE 356 C',alternate:{space:'CMYK',values:[0,0,1,0]}}],null,{verified:true});
   assert.match(conflict.errors.join(' '),/Conflicting PDF alternate/);
+});
+test('MASCOT white-only and four-color jobs have exact shared frame counts and ink order',()=>{
+  const p=S.defaults()[0];
+  const whiteOnly=S.compose(p,['Lim','White-BG'],null,{verified:true});
+  assert.deepEqual(whiteOnly.sequence.map(i=>i.name),['White-BG','Lim']);assert.equal(whiteOnly.frames.length,2);
+  const fourColor=S.compose(p,['PANTONE 186 C','PANTONE 286 C','PANTONE 356 C','PANTONE 299 C','White-BG','Lim'],null,{verified:true});
+  assert.deepEqual(fourColor.sequence.map(i=>i.name),['PANTONE 186 C','PANTONE 286 C','PANTONE 356 C','PANTONE 299 C','White-BG','Lim']);assert.equal(fourColor.frames.length,6);
+});
+test('MASCOT merges repeated named inks across logos, keeps an independent blocker, and blocks either missing mandatory ink',()=>{
+  const p=S.defaults()[0],shared=S.compose(p,[
+    {name:'PANTONE 186 C',alternate:{space:'CMYK',values:[0,0.95,0.8,0.1]}},
+    {name:'Blocker',alternate:{space:'CMYK',values:[0,0,0,0.7]}},
+    {name:'PANTONE 186 C',alternate:{space:'RGB',values:[0.8,0.1,0.1]}},
+    'Lim','White-BG','Blocker','PANTONE 186 C'
+  ],null,{verified:true});
+  assert.deepEqual(shared.sequence.map(i=>i.name),['PANTONE 186 C','Blocker','White-BG','Lim']);assert.equal(shared.frames.length,4);
+  assert.ok(shared.warnings.some(x=>x.includes('PANTONE 186 C')));
+  for(const missing of ['White-BG','Lim']){
+    const actual=['PANTONE 186 C','White-BG','Lim'].filter(name=>name!==missing),result=S.compose(p,actual,null,{verified:true});
+    assert.deepEqual(S.sequence(actual,p).missing,[missing]);
+    assert.match(result.errors.join(' '),new RegExp('Missing required inks:.*'+missing));
+  }
+});
+test('MASCOT migrations enforce mandatory inks while preserving custom company profiles',()=>{
+  const saved=S.defaults()[0];saved.inks.required=[];saved.inks.missing='warn';saved.inks.tail=['Lim'];saved.inks.spots['White-BG']={space:'CMYK',values:[0,0,0,0]};
+  const migrated=S.validate(saved);assert.deepEqual(migrated.inks.required,['White-BG','Lim']);assert.equal(migrated.inks.missing,'block');assert.deepEqual(migrated.inks.tail,['White-BG','Lim']);
+  const company=S.clone(saved);company.id='company-example';company.name='Example company';company.inks.required=['Blocker'];company.inks.missing='warn';company.inks.tail=['Blocker'];company.inks.lockTail=false;
+  company.inks.spots={'White-BG':{space:'CMYK',values:[0,0,0,5]},Lim:{space:'RGB',values:[12,34,56]}};company.inks.colors={'White-BG':'#eeeeee',Lim:'#ddccbb'};
+  const validated=S.validate(company);assert.deepEqual(validated.inks.required,['Blocker']);assert.equal(validated.inks.missing,'warn');assert.deepEqual(validated.inks.tail,['Blocker']);
+  assert.deepEqual(validated.inks.spots,company.inks.spots);assert.deepEqual(validated.inks.colors,company.inks.colors);
 });
 test('production settings survive empty sessions and v3 sessions migrate without losing jobs',()=>{
   const Session=require('../client/session'),state={jobs:[],productionSetup:{profiles:S.defaults(),selected:'mascot',inks:['Lim'],verified:true}};
