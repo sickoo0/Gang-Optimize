@@ -38,13 +38,13 @@ assert.equal(Session.load(storage),null);
 storage.setItem(Session.key,JSON.stringify({version:1,jobs,latest:null,proposals:[],selectedSheet:0,
   settings,optimizationMode:'balanced',overproductionCap:'0',customOverproduction:'0'}));
 const upgraded=Session.load(storage);
-assert.equal(upgraded.version,3);
+assert.equal(upgraded.version,4);
 assert.equal(upgraded.migratedOptimizerDefaults,true);
 assert.equal(upgraded.settings.inset,5,'a saved 5 mm production margin remains intact');
 assert.equal(upgraded.optimizationMode,'overproduction');
 assert.equal(upgraded.overproductionCap,'auto');
 storage.setItem(Session.key,JSON.stringify({version:2,jobs,settings:{...settings,inset:4},latest:null,proposals:[]}));
 const chosenMargin=Session.load(storage);
-assert.equal(chosenMargin.version,3);
+assert.equal(chosenMargin.version,4);
 assert.equal(chosenMargin.settings.inset,4,'a saved nondefault margin remains available');
 console.log('PASS: import, calculate, generate, CEP reload recovery, repeat generation, and failure retention');

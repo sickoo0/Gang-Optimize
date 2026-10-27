@@ -53,7 +53,7 @@ function session({ fixtureJobs, cap = '0', custom = '0', mode = 'balanced', shee
 async function newPanel(seed, options = {}) {
   const context = await browser.newContext({ viewport: { width: 460, height: 900 }, deviceScaleFactor: 1 });
   await context.addInitScript(({ key, value }) => {
-    if (value !== null) localStorage.setItem(key, value);
+    if (value !== null && !sessionStorage.getItem('bytebase-test-seeded')) {localStorage.setItem(key, value);sessionStorage.setItem('bytebase-test-seeded','1');}
     window.previewRectangles = [];
     const stroke = CanvasRenderingContext2D.prototype.strokeRect, clear = CanvasRenderingContext2D.prototype.clearRect;
     CanvasRenderingContext2D.prototype.strokeRect = function (...args) {
@@ -113,7 +113,7 @@ try {
   }));
   assert.equal(migration.mode, 'overproduction');
   assert.equal(migration.cap, 'auto');
-  assert.equal(migration.savedVersion, 3);
+  assert.equal(migration.savedVersion, 4);
   assert.equal(migration.cutMargin, '5', 'a saved production margin remains unchanged after upgrade');
   assert.match(migration.status, /fresh preview/i);
   await migrationContext.close();
@@ -180,7 +180,7 @@ try {
   const scale = actualPreview.width / settings.sheetW;
   assert.equal(actualPreview.rectangles.length, 1 + actualPreview.plan.totalCopies * 2);
   for (const [index, placement] of actualPreview.plan.sheets[0].placements.entries()) {
-    const box = actualPreview.rectangles[1 + index * 2], artwork = actualPreview.rectangles[2 + index * 2];
+    const box = actualPreview.rectangles[index * 2], artwork = actualPreview.rectangles[1 + index * 2];
     const expected = [placement.x, placement.y, placement.w, placement.h].map(mm => mm * scale);
     const inner = [placement.x + 5, placement.y + 5, placement.w - 10, placement.h - 10].map(mm => mm * scale);
     for (let axis = 0; axis < 4; axis++) { assert.ok(Math.abs(box[axis] - expected[axis]) < 1e-6); assert.ok(Math.abs(artwork[axis] - inner[axis]) < 1e-6); }
@@ -194,6 +194,10 @@ try {
   createSeed.proposals = actualPreview.plan.proposals;
   const { context: createContext, page: createPage } = await newPanel(JSON.stringify(createSeed), { bridgePlan: actualPreview.plan });
   assert.equal(await createPage.locator('#create').isDisabled(), false);
+  await createPage.locator('#inkNames').fill('280c\n485c\n7616c\nWhite-BG\nLim');
+  await createPage.locator('#applyInkNames').click();
+  await createPage.locator('#verifyInks').check();
+  assert.equal(await createPage.locator('#frameLegend').innerText(),'1/5 280c  2/5 485c  3/5 7616c  4/5 hvid  5/5 lim');
   await createPage.locator('#create').click();
   await createPage.waitForFunction(() => document.querySelector('#status').textContent.startsWith('Created and verified '), null, { timeout: 3000 });
   const bridgeCalls = await createPage.evaluate(() => window.__bridgeCalls);
@@ -201,6 +205,32 @@ try {
   const payload = /^Bytebase\.createLayout\("([^"]+)"\)$/.exec(bridgeCalls[0]);
   assert.ok(payload, 'the CEP bridge receives a createLayout request');
   assert.equal(JSON.parse(decodeURIComponent(payload[1])).layout.totalCopies, actualPreview.plan.totalCopies);
+  assert.equal(JSON.parse(decodeURIComponent(payload[1])).production.options.verified,true);
+  const originalLayout=await createPage.evaluate(()=>JSON.stringify(JSON.parse(localStorage.getItem('com.bytebase.gangoptimizer.session.v1')).latest));
+  await createPage.locator('#frameTextMode').selectOption('current');
+  await createPage.locator('#currentFrame').selectOption('4');
+  assert.equal(await createPage.locator('#frameLegend').innerText(),'5/5 lim');
+  assert.equal(await createPage.evaluate(()=>JSON.stringify(JSON.parse(localStorage.getItem('com.bytebase.gangoptimizer.session.v1')).latest)),originalLayout,'appearance change retains optimized layout');
+  await createPage.reload();
+  assert.equal(await createPage.locator('#frameLegend').innerText(),'5/5 lim');
+  assert.equal(await createPage.locator('#verifyInks').isChecked(),true);
+  await createPage.locator('.production-setup details summary').click();
+  await createPage.locator('#duplicateProfile').click();
+  assert.equal(await createPage.locator('#productionProfile option').count(),4);
+  await createPage.locator('#profileName').fill('Test company');await createPage.locator('#renameProfile').click();
+  assert.equal(await createPage.locator('#productionProfile option:checked').innerText(),'Test company');
+  const svg='<svg viewBox="0 0 10 10"><circle cx="5" cy="5" r="4" fill="none" stroke="black" stroke-width="0.2"/></svg>';
+  await createPage.locator('#importMarkSVG').setInputFiles({name:'target.svg',mimeType:'image/svg+xml',buffer:Buffer.from(svg)});
+  await createPage.waitForFunction(()=>document.getElementById('markType').value==='svg');
+  const profile=JSON.parse(await createPage.locator('#profileEditor').inputValue());
+  assert.equal(profile.assets.imported,svg);
+  await createPage.locator('#importMarkSVG').setInputFiles({name:'bad.svg',mimeType:'image/svg+xml',buffer:Buffer.from('<svg><script/></svg>')});
+  await createPage.waitForFunction(()=>document.getElementById('status').textContent.includes('SVG:'));
+  assert.equal(JSON.parse(await createPage.locator('#profileEditor').inputValue()).assets.imported,svg,'unsafe import retains previous profile');
+  profile.sheet.width=710;await createPage.locator('#profileEditor').fill(JSON.stringify(profile));await createPage.locator('#saveProfile').click();
+  assert.equal(await createPage.locator('#sheetW').inputValue(),'710');assert.equal(await createPage.locator('#metricSheets').innerText(),'–');
+  await createPage.reload();assert.equal(await createPage.locator('#sheetW').inputValue(),'710');assert.equal(await createPage.locator('#productionProfile option:checked').innerText(),'Test company');
+  results.push({name:'production-setup-profiles-svg-legend-persistence',passed:true});
   results.push({ name: 'create-button-invokes-illustrator-bridge', placements: actualPreview.plan.totalCopies });
   await createContext.close();
   const { context: freshContext, page: freshPage } = await newPanel(null);

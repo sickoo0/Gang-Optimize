@@ -1,18 +1,18 @@
 const assert=require('node:assert/strict');
 const Cutting=require('../host/cutting.js');
 const Geometry=require('../host/geometry.js');
-module.exports=function validate(plan,input){
+module.exports=function validate(plan,input,options={}){
   const {settings:s,jobs}=input,cap=plan.maxAllowedOverproductionPct??input.maxOverproductionPct;
-  const clearance=Number(s.inset)===0?0.1:0;
+  const clearance=options.legacy?0:Number(s.inset)===0?0.1:0;
   assert.equal(plan.sheetCount,1);assert.equal(plan.sheets.length,1);
-  assert.deepEqual(plan.settings,{...s,artworkClearance:clearance});
+  assert.deepEqual(plan.settings,options.legacy?s:{...s,artworkClearance:clearance});
   const sheet=plan.sheets[0],ps=sheet.placements,counts=new Map(),indices=new Set();
   assert.ok(Number.isInteger(sheet.printingRuns)&&sheet.printingRuns>0);
   assert.ok(ps.length<=500);assert.equal(Cutting.verifyGuillotineCuts(s,ps,sheet.cuts),true);
   let artwork=0,boxes=0;
   for(let i=0;i<ps.length;i++){
     const p=ps[i],j=jobs.find(j=>String(j.id)===p.id);assert.ok(j);
-    assert.equal(p.filePath,j.filePath);assert.equal(p.artworkW,j.width);assert.equal(p.artworkH,j.height);assert.equal(p.inset,s.inset);assert.equal(p.clearance,clearance);
+    assert.equal(p.filePath,j.filePath);assert.equal(p.artworkW,j.width);assert.equal(p.artworkH,j.height);assert.equal(p.inset,s.inset);assert.equal(options.legacy?(p.clearance||0):p.clearance,clearance);
     assert.equal(typeof p.rotated,'boolean');if(!s.rotate)assert.equal(p.rotated,false);
     assert.ok(Math.abs(p.w-(p.rotated?j.height:j.width)-2*s.inset-clearance)<1e-6);
     assert.ok(Math.abs(p.h-(p.rotated?j.width:j.height)-2*s.inset-clearance)<1e-6);

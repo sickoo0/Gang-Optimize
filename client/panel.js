@@ -12,6 +12,7 @@
   var optimizationWorker=null,optimizationToken=0,optimizationTimer=null;
   var optimizeButtonHTML;
   var sessionKey=window.BytebaseSession;
+  var setupUI=null,restoredSetup=null;
   function captureScroll(){
     var html=document.documentElement,body=document.body,app=document.querySelector&&document.querySelector('.app');
     return {top:Math.max(window.pageYOffset||0,html&&html.scrollTop||0,body&&body.scrollTop||0),
@@ -59,10 +60,10 @@
   }
   function saveSession(reason){
     var store=sessionStore();
-    if(demoMode||!jobs.length){if(!jobs.length&&sessionKey)sessionKey.clear(store);return true;}
+    if(demoMode)return true;
     var viewport=captureScroll();
     var ok=sessionKey&&sessionKey.save(store,{jobs:jobs,latest:latest,proposals:proposals,selectedSheet:selectedSheet,
-      scrollTop:viewport.top,appScrollTop:viewport.appTop,
+      scrollTop:viewport.top,appScrollTop:viewport.appTop,productionSetup:setupUI?setupUI.snapshot():restoredSetup,
       settings:settings(),optimizationMode:$('optimizationMode').value,overproductionCap:$('overproductionCap').value,
       customOverproduction:$('customOverproduction').value,lastOptimizationError:lastOptimizationError});
     if(window.console&&console.info)console.info('[BYTEBASE session] saved',{reason:reason,jobs:jobs.length,hasLayout:!!latest,selectedSheet:selectedSheet,ok:!!ok});
@@ -77,6 +78,7 @@
   function restoreSession(){
     var saved=sessionKey&&sessionKey.load(sessionStore());if(!saved)return false;
     jobs=saved.jobs;latest=saved.latest;proposals=saved.proposals;selectedSheet=saved.selectedSheet;demoMode=false;
+    restoredSetup=saved.productionSetup||null;
     lastOptimizationError=saved.lastOptimizationError||readLastOptimizationError();
     if(saved.migratedOptimizerDefaults){
       // A version 1 layout was calculated with the old cap and objective.
@@ -173,7 +175,7 @@
       var path=extensionHostPath(),encoded=encodeURIComponent(path);
       var expression='(function(){try{var f=new File(decodeURIComponent('+JSON.stringify(encoded)+'));'+
         'if(!f.exists)throw Error("host.jsx is missing");$.evalFile(f);'+
-        'if(!$.global.Bytebase||typeof $.global.Bytebase.createLayout!=="function"||$.global.Bytebase.__hostBuild!=="variable-cut-margin-v2")throw Error("host.jsx did not refresh the Illustrator-global handler");'+
+        'if(!$.global.Bytebase||typeof $.global.Bytebase.createLayout!=="function"||$.global.Bytebase.__hostBuild!=="production-setup-v1")throw Error("host.jsx did not refresh the Illustrator-global handler");'+
         'return "BYTEBASE_RELOAD_OK";}catch(e){return "BYTEBASE_RELOAD_ERROR: "+String(e.message||e)+" (line "+(e.line||"?")+")";}})()';
       var completed=false,timer=setTimeout(function(){
         if(completed)return;completed=true;button.disabled=false;
@@ -299,7 +301,7 @@
       }).catch(function(e){
         jobs.forEach(function(j){j.measured=false;j.measureError=e.message;});
         invalidate();saveSession('PDF measurement failed');setStatus((fromImport?'Files imported, but measurement failed: ':'Measurement failed: ')+e.message+' Provide verified dimensions manually, then remeasure before creating.','error');
-      }).finally(function(){$('measure').disabled=jobs.length===0||demoMode||!isCEP;});
+      }).finally(function(){$('measure').disabled=jobs.length===0||demoMode||!isCEP;if(fromImport&&setupUI)setupUI.analyze();});
   }
   $('chooseFolder').addEventListener('click',function(){
     setStatus('Opening Illustrator folder picker...');
@@ -309,7 +311,7 @@
     measureJobs(false);
   });
   $('demo').addEventListener('click',function(){
-    if(sessionKey)sessionKey.clear(sessionStore());
+    saveSession('before temporary demo');
     demoMode=true;
     jobs=[
       {id:'d1',fileName:'DEMO_logo_01_OrderQ = 50.pdf',filePath:'',width:90,height:50,orderQ:50,orderQSource:'parsed',orderQConfirmed:true,measured:false},
@@ -497,7 +499,7 @@
   function renderPreview(){
     var c=$('sheetCanvas');var ctx=c.getContext('2d');
     var physicalWidth=Math.max(290,c.parentNode.clientWidth-26);var scale=window.devicePixelRatio||1;
-    var sheetW=latest?latest.settings.sheetW:700,sheetH=latest?latest.settings.sheetH:500;
+    var sheetW=latest?latest.settings.sheetW:num($('sheetW').value),sheetH=latest?latest.settings.sheetH:num($('sheetH').value);
     var physicalHeight=Math.round(physicalWidth*sheetH/sheetW);
     c.style.height=physicalHeight+'px';c.width=Math.round(physicalWidth*scale);c.height=Math.round(physicalHeight*scale);
     ctx.setTransform(scale,0,0,scale,0,0);
@@ -505,7 +507,7 @@
     var ratio=physicalWidth/sheetW;
     var margin=(latest?latest.settings.edge:20)*ratio;
     ctx.strokeStyle='#b87ad0';ctx.lineWidth=1;ctx.setLineDash([3,2]);
-    ctx.strokeRect(margin+.5,margin+.5,physicalWidth-2*margin,physicalHeight-2*margin);ctx.setLineDash([]);
+    if(!setupUI)ctx.strokeRect(margin+.5,margin+.5,physicalWidth-2*margin,physicalHeight-2*margin);ctx.setLineDash([]);
     if(latest){
       var placements=latest.sheets[selectedSheet].placements;
       placements.forEach(function(p){
@@ -530,6 +532,7 @@
       ctx.fillStyle='#66798f';ctx.font='11px Segoe UI,Arial';ctx.textAlign='center';ctx.textBaseline='middle';
       ctx.fillText('Your sheet preview appears here',physicalWidth/2,physicalHeight/2);
     }
+    if(setupUI)setupUI.draw(ctx,ratio);
     var shownInset=latest?Number(latest.settings.inset):num($('inset').value);
     $('cutMarginLegend').textContent='Cut margin: '+(isFinite(shownInset)?shownInset:'–')+' mm / side';
     $('artworkLegend').hidden=!(shownInset>0);
@@ -540,13 +543,15 @@
   $('next').addEventListener('click',function(){if(latest&&selectedSheet<latest.sheetCount-1){selectedSheet++;renderPreview();saveSession('preview sheet changed');}});
   $('create').addEventListener('click',function(){
     if(!latest||demoMode) return;
+    var productionRequest=null;
+    try{if(setupUI)productionRequest=setupUI.request(true);}catch(e){setStatus(e.message,'error');return;}
     if(!cuttable(latest)){
       setStatus('Recalculate first: Illustrator requires a verified guillotine cut sequence on every sheet. Imported PDFs remain loaded.','error');return;
     }
     saveSession('before Illustrator document creation');
     if(window.console&&console.info)console.info('[BYTEBASE generation] starting',{jobs:jobs.length,sheets:latest.sheetCount,placements:latest.totalCopies});
     $('create').disabled=true;setStatus('Creating working layout. Illustrator may be busy...');
-    hostCall('createLayout',{layout:latest}).then(function(res){
+    hostCall('createLayout',{layout:latest,production:productionRequest}).then(function(res){
       if(window.console&&console.info)console.info('[BYTEBASE generation] completed',res);
       setStatus('Created and verified '+res.verified+'/'+res.placed+' linked PDF placements across '+res.sheets+' artboard(s). Check visual bounds and save the working AI file. NOT RIP-ready.','success');
     }).catch(function(e){if(window.console&&console.error)console.error('[BYTEBASE generation] failed; session retained',e);saveSession('Illustrator generation failed');setStatus('Layout generation failed: '+e.message,'error');}).finally(function(){$('create').disabled=false;saveSession('Illustrator generation callback completed');});
@@ -558,6 +563,8 @@
   if(!isCEP) setStatus('Browser preview mode. Open inside Illustrator for folder selection, measurement and layout creation.');
   if(window.console&&console.info)console.info('[BYTEBASE lifecycle] panel initialized',{isCEP:isCEP,readyState:document.readyState});
   if(!restoreSession())renderPreview();
+  if(window.BytebaseSetupUI){setupUI=window.BytebaseSetupUI({jobs:function(){return jobs;},layout:function(){return latest;},settings:settings,
+    save:function(){return saveSession('production setup changed');},invalidate:invalidate,draw:renderPreview,status:setStatus,host:hostCall},restoredSetup);renderPreview();}
   window.addEventListener('error',function(event){logOptimization('panel-exception',{message:event.message||'Unknown JavaScript error',stack:event.error&&event.error.stack?event.error.stack:'',file:event.filename,line:event.lineno});});
   window.addEventListener('unhandledrejection',function(event){var reason=event.reason;logOptimization('unhandled-rejection',{message:reason&&reason.message?reason.message:String(reason),stack:reason&&reason.stack?reason.stack:''});});
   window.addEventListener('beforeunload',function(){saveSession('panel unloading');});

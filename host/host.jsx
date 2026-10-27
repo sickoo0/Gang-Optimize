@@ -2,17 +2,21 @@
  * BYTEBASE Gang Optimizer - Illustrator ExtendScript bridge (CEP)
  * v0.1 SAFE PILOT - never overwrites source PDFs; no RIP export.
  * Source PDF artwork remains LINKED, not embedded or edited.
- * Only geometry is planned; production-specific ink analysis is not implemented.
+ * Optional profile-driven marks and outlined labels are working proof artwork.
+ * PDF ink candidates are read in CEP; separations/RIP export remain disabled.
  */
 #target illustrator
 #include "geometry.js"
 #include "cutting.js"
+#include "../shared/production-setup.js"
+#include "production-artwork.jsx"
+#include "json-read.js"
 // evalFile runs this file in its own scope during Reload Panel. Reuse the
 // Illustrator-global namespace explicitly so refreshed methods replace stale
 // handlers instead of remaining trapped in the evalFile scope.
 var Bytebase = $.global.Bytebase || {};
 $.global.Bytebase = Bytebase;
-Bytebase.__hostBuild = 'variable-cut-margin-v2';
+Bytebase.__hostBuild = 'production-setup-v1';
 (function(){
   function mm(points){ return BytebaseGeometry.ptToMm(points); }
   function pt(mmValue){ return BytebaseGeometry.mmToPt(mmValue); }
@@ -175,6 +179,13 @@ Bytebase.__hostBuild = 'variable-cut-margin-v2';
       return {cancelled:false,folder:directory.fsName,files:result};
     });
   };
+  Bytebase.saveProductionJSON=function(encoded){return safeAction(function(){
+    var request=input(encoded),body=String(request.body||'');BytebaseJSONRead(body);
+    var file=File.saveDialog('Save '+String(request.name||'production profile'),'JSON:*.json');if(!file)return {cancelled:true};
+    if(!/\.json$/i.test(file.name))file=new File(file.fsName+'.json');
+    file.encoding='UTF-8';if(!file.open('w'))throw Error('Cannot write JSON file');try{if(!file.write(body))throw Error('JSON write failed');}finally{file.close();}
+    return {saved:true};
+  });};
   Bytebase.measure = function(encoded){
     return safeAction(function(){
       var request=input(encoded), list=request.files || [], measurements=[], tmp=null;
@@ -221,6 +232,7 @@ Bytebase.__hostBuild = 'variable-cut-margin-v2';
       if(layout.sheets.length!==1||layout.sheetCount!==1)throw Error('The layout must contain exactly one verified gang sheet. Recalculate the layout.');
       var s=layout.settings;
       validateLayout(layout);
+      if(request.production)BytebaseProductionArtwork.prepare(request.production,layout);
       var w=pt(s.sheetW),h=pt(s.sheetH),tmp=null,doc=null;
       var previousCoordinateSystem=null,coordinateSystemChanged=false;
       // Preflight every input PDF before writing a layout: no automatic scaling.
@@ -278,10 +290,12 @@ Bytebase.__hostBuild = 'variable-cut-margin-v2';
             placedCount++;
           }
         }
-        createGuides(doc,layout.sheets.length,s);
+        var productionResult=null;
+        if(request.production)productionResult=BytebaseProductionArtwork.apply(doc,layout,request.production,json,BytebaseJSONRead,false);
+        else createGuides(doc,layout.sheets.length,s);
         doc.activeLayer=srcLayer;
         doc.artboards.setActiveArtboardIndex(0);
-        return {sheets:layout.sheets.length,placed:placedCount,verified:placedCount,warning:'WORKING PROOF ONLY - do not send to RIP'};
+        return {sheets:layout.sheets.length,placed:placedCount,verified:placedCount,production:productionResult,warning:'WORKING PROOF ONLY - do not send to RIP'};
       }catch(e){
         if(doc)try{doc.close(SaveOptions.DONOTSAVECHANGES);}catch(ignore3){}
         throw e;
@@ -290,4 +304,10 @@ Bytebase.__hostBuild = 'variable-cut-margin-v2';
       }
     });
   };
+  Bytebase.updateProduction=function(encoded){return safeAction(function(){
+    var request=input(encoded);if(!app.documents.length)throw Error('Open a generated working sheet first');validateLayout(request.layout);
+    var previous=app.coordinateSystem;try{app.coordinateSystem=CoordinateSystem.DOCUMENTCOORDINATESYSTEM;
+      return BytebaseProductionArtwork.apply(app.activeDocument,request.layout,request.production,json,BytebaseJSONRead,true);
+    }finally{app.coordinateSystem=previous;}
+  });};
 }());

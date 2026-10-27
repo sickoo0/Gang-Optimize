@@ -4,6 +4,38 @@
 
 Dette er en dockbar CEP-pilot til Adobe Illustrator. Den indeholder quantity-aware produktionsplanlægning, gruppebaseret rectangle packing og en ExtendScript-bro, der placerer linkede PDF'er i et nyt Illustrator-dokument. Illustrator-integrationen er afprøvet med midlertidige test-PDF'er; produktions-PDF'er skal fortsat valideres visuelt og mod deres godkendte PDF-boks.
 
+## Nyt: Single-frame Production Setup
+
+Panelet har nu **04 — Production Setup** og **05 — Export & Validation**. Pakkemotoren er bevaret.
+
+1. Vælg **MASCOT — Single Frame**, **Generic — Simple** eller en gemt firmaprofil i sektion 04.
+2. Importér PDF'erne og beregn layoutet som hidtil. PDF-farveressourcer læses automatisk efter målingen. **Read PDF ink candidates** kører analysen igen.
+3. Kontrollér de faktisk anvendte farver i alle kilde-PDF'er. Ressourcer kan være ubrugte eller tilhøre andre sider; analysen giver kandidater, ikke en godkendt separationsliste. Ret listen, én farve pr. linje, og bekræft kontrollen.
+4. Flyt almindelige farver med træk/slip eller pile. MASCOT låser White-BG næstsidst og Lim sidst, når de findes. De tilføjes aldrig automatisk, hvis de mangler.
+5. Vælg **Full sequence** eller **Current frame**. Eksempel: `1/5 280c  2/5 485c  3/5 7616c  4/5 hvid  5/5 lim`.
+6. Tryk **Create working Illustrator layout** i sektion 03. Dokumentet indeholder linkede originaler, sorte proof-mærker, tekst som vektorkonturer og en separat ikke-printende guide-layer. Kontrollér og gem AI-filen i Illustrator.
+7. **Update marks in active generated sheet** erstatter kun pluginets egne, uændrede produktionslag. Manuelle ændringer af mærker eller artwork udløser en fejl; opret et nyt arbejdsark i stedet.
+
+Avanceret opsætning indeholder profiloprettelse/kopiering/navngivning, JSON-import/eksport,
+SVG-import, mærkemål/ankre/koordinater og tekst/skrifttype. JSON-editoren giver adgang til
+gentagelser, referencespunkter, aliaser, farver, obligatoriske farver og eksponeringsplanens
+legend-regler. Profilen valideres ved gemning. Geometriændringer kræver ny layoutberegning;
+rene udseendeændringer beholder resultatet. Profiler og farver gemmes også uden importerede PDF'er.
+
+SVG-import understøtter et kontrolleret udsnit: linjer, rektangler, cirkler og ellipser med
+viewBox og sort/ingen fyld/streg. Paths, CSS, grupper, transformationer, scripts og eksterne
+referencer afvises. Skrifttypen skal findes i Illustrator under sit PostScript-navn; manglende
+font eller tekst, der ikke kan være i det reserverede felt, stopper oprettelsen uden skalering.
+
+MASCOT starter fortsat med 700 × 500 mm, 20 mm kant og **0 mm cut margin**; teknisk frirum
+på 0,1 mm bevares. De nye mærkers fysiske mål er **foreløbige** og skal kalibreres mod den
+godkendte InDesign/IDML-original. Tekstpreview bruger browserens fontmål; Illustrator kontrollerer
+de faktiske konturer. Mærker og reserverede felter bruger samme mm-geometri begge steder.
+
+**RIP-eksport er deaktiveret.** JSON-manifestet er en plan med farverækkefølge og mærker pr.
+ramme, ikke en eksponeringsfil. Sort proof-artwork må ikke bruges som en færdig all-plate-separation.
+Se [arkitektur, profilformat, test og produktionsbegrænsninger](docs/PRODUCTION_SETUP.md).
+
 ## Installation på Windows (Illustrator 2025/2026)
 
 1. Pak ZIP-filen ud.
@@ -80,10 +112,10 @@ Efter benchmarken kan `npm run test:illustrator:packing` på Windows kontrollere
 
 ## Hvad den IKKE kan endnu
 
-- Automatisk aflæse og validere PDF-spotfarver og **Esko print order**.
+- Automatisk godkende faktisk anvendte PDF-spotfarver eller **Esko print order**. Farveressourcer læses som kandidater og kræver manuel kontrol.
 - Optimere farvefællesskab, trykkørsler efter faktisk setup/materiale/ink-omkostning eller kroner.
 - Genbruge/strukturere eksisterende spotseparationer, trapping, White-BG og Lim til produktion.
-- Lave registreringsmærker og ramme-legend korrekt til RIP.
+- Godkende de genererede registreringsmærker og ramme-legend til den konkrete RIP. Arbejdsark med mærker og tekst er implementeret.
 - Eksportere **én flersidet PDF med 100% K per ramme**, herunder hvid og lim sidst.
 - Split-frame-optimering.
 - Maskinspecifikke begrænsninger som knivspalte, minimumsstørrelse på emner, anslag og fastholdelse. Den geometriske snitliste skal kontrolleres mod jeres konkrete skæremaskine.
@@ -98,8 +130,8 @@ Efter benchmarken kan `npm run test:illustrator:packing` på Windows kontrollere
 
 1. Verificér pluginet i jeres konkrete Illustrator 2026.
 2. Vælg en **enkelt original produktions-PDF** og tjek forskellen mellem Illustrator Place-bounds, TrimBox, farvenavne og separationsorden.
-3. Implementér analyse af spot-separationer uden at ændre PDF'en.
-4. Gem sekvens-/fællesfarvebegrænsninger i optimeringsmotoren.
+3. Valider faktisk farvebrug mod separationsoutput; den nuværende read-only analyse finder PDF-farveressourcer.
+4. Kalibrer produktionsprofilens mærker og tekst mod den godkendte InDesign/IDML-original.
 5. Byg en sikker separationseksport, og sammenlign **side for side** med jeres faktiske `frank ramme.pdf` (6 sider, alle motiver 100% sort K).
 
 ## Kilder (Adobe)

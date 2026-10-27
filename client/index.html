@@ -76,13 +76,66 @@
         <button id="create" class="btn outline full" disabled>Create working Illustrator layout <span>↗</span></button>
         <p class="helper">The Illustrator output is an editable proof using linked PDFs. It is <strong>not a separated exposure PDF</strong>. Spot inks, trapping, print order and RIP export are not yet validated.</p>
       </section>
+      <section class="section production-setup">
+        <div class="section-title"><span class="step">04</span><h2>Production Setup</h2></div>
+        <label>Company profile<select id="productionProfile"></select></label>
+        <p class="helper">Choose profile → import PDFs → calculate → verify inks → generate the working sheet.</p>
+        <div class="mark-controls"><canvas id="markPreview" width="100" height="100" aria-label="Registration mark preview"></canvas><label>Registration mark<select id="markType"><option value="target">Cross with circle</option><option value="cross">Cross</option><option value="dot">Alignment dot</option><option value="tick">Alignment tick</option><option value="svg">Custom SVG</option></select></label></div>
+        <label class="toggle-row"><input type="checkbox" id="showProductionGuides" checked/> Show print-boundary guides</label>
+        <label>Frame text<select id="frameTextMode"><option value="full">Full sequence</option><option value="current">Current frame</option></select></label>
+        <label>Preview frame<select id="currentFrame"></select></label>
+        <p id="frameLegend" class="frame-legend"></p>
+        <p class="helper">Text preview uses browser font metrics; Illustrator verifies the installed font and outlines within the same reserved area. Working-sheet marks and text are black proof artwork.</p>
+        <button id="analyzeInks" class="btn secondary full">Read PDF ink candidates</button>
+        <p class="helper">Color-space resources can include unused inks. Verify every PDF's actual separations, including process colors. Linked-document swatches are not used as evidence.</p>
+        <ol id="inkSequence" class="ink-sequence" aria-label="Ink sequence"></ol>
+        <label>Actual ink names · one per line<textarea id="inkNames" rows="5" placeholder="280c&#10;485c&#10;7616c&#10;White-BG&#10;Lim"></textarea></label>
+        <button id="applyInkNames" class="btn secondary">Apply ink list</button>
+        <label class="toggle-row"><input id="verifyInks" type="checkbox"/> I verified the ink list against every source PDF</label>
+        <label class="toggle-row"><input id="lockSpecialInks" type="checkbox" checked/> Lock profile special inks to the end (MASCOT: hvid, lim)</label>
+        <details class="advanced-setting"><summary>Advanced production settings</summary>
+          <label>Profile name<input id="profileName"/></label>
+          <div class="inline-actions"><button id="newProfile" class="btn secondary">New</button><button id="duplicateProfile" class="btn secondary">Duplicate</button><button id="renameProfile" class="btn secondary">Rename</button></div>
+          <label>Import company profile<input id="importProfile" type="file" accept=".json,application/json"/></label>
+          <button id="exportProfile" class="btn secondary">Export profile</button>
+          <button id="exportRecovery" class="btn link">Export damaged setup recovery</button>
+          <label>Import registration SVG<input id="importMarkSVG" type="file" accept=".svg,image/svg+xml"/></label>
+          <p class="helper">Supported SVG: self-closing line, rectangle, circle and ellipse; black/none; viewBox required. Paths, CSS, transforms and references are rejected.</p>
+          <label>Edit mark<select id="editMark"></select></label>
+          <div class="settings-grid">
+            <label>Width mm<input id="markWidth" type="number" step="0.1"/></label><label>Height mm<input id="markHeight" type="number" step="0.1"/></label>
+            <label>X offset mm<input id="markX" type="number" step="0.1"/></label><label>Y offset mm<input id="markY" type="number" step="0.1"/></label>
+            <label>Stroke mm<input id="markStroke" type="number" step="0.01"/></label><label>Rotation °<input id="markRotation" type="number"/></label>
+          </div>
+          <label>Anchor<input id="markAnchor" placeholder="sheet:top-left"/></label>
+          <label class="toggle-row"><input id="markPrintable" type="checkbox"/> Printable mark</label><label class="toggle-row"><input id="markVisible" type="checkbox"/> Visible</label>
+          <div class="inline-actions"><button id="saveMark" class="btn secondary">Apply mark</button><button id="addMark" class="btn secondary">Add mark</button><button id="removeMark" class="btn secondary">Remove mark</button></div>
+          <label>PostScript font name<input id="textFont"/></label>
+          <div class="settings-grid"><label>Font size pt<input id="textSize" type="number" step="0.5"/></label><label>Text width mm<input id="textWidth" type="number"/></label><label>X offset mm<input id="textX" type="number" step="0.1"/></label><label>Y offset mm<input id="textY" type="number" step="0.1"/></label></div>
+          <label>Legend assignment<select id="legendAssignment"><option value="repeat">Full legend on each frame</option><option value="per-ink">Each component on its own frame</option></select></label>
+          <label>Number format<input id="textFormat"/></label><button id="saveText" class="btn secondary">Apply text settings</button>
+          <label>Job description<input id="productionJob" maxlength="100"/></label><label>Sheet identification<input id="productionSheet" maxlength="100"/></label>
+          <label>Profile configuration (mm; font size in pt)<textarea id="profileEditor" rows="18" spellcheck="false"></textarea></label>
+          <p class="helper">Edit sheet, marks, repetitions, anchors, SVG assets, text/font, aliases, tail rules and export preferences. Save validates the entire profile. Geometry changes require recalculation. Text uses an installed PostScript font name; Illustrator rejects missing fonts and overflowing labels.</p>
+          <div class="inline-actions"><button id="saveProfile" class="btn secondary">Validate &amp; save</button><button id="resetProfile" class="btn secondary">Reset profile</button></div>
+        </details>
+        <p id="inkReports" class="helper production-report"></p><p id="productionValidation" class="helper production-report" role="status"></p>
+        <button id="applyProduction" class="btn outline full">Update marks in active generated sheet</button>
+      </section>
+      <section class="section">
+        <div class="section-title"><span class="step">05</span><h2>Export &amp; Validation</h2></div>
+        <p class="helper">Working Illustrator sheet: linked artwork, black proof marks, outlined frame text, ink metadata and nonprinting guides. Save the AI document in Illustrator after inspection.</p>
+        <button id="exportManifest" class="btn secondary full">Export working-sheet manifest</button>
+        <button class="btn outline full" disabled>RIP separation export · not validated</button>
+        <p class="helper">No exposure PDF is generated. Black proof marks are not verified registration separations. Original MASCOT template calibration and an approved separation pipeline remain required.</p>
+      </section>
       <div id="status" class="status" role="status">Ready. Choose a folder of production PDFs.</div>
     </main>
     <footer><span>Single-frame first</span><span class="footer-right">Split-frame · planned</span></footer>
   </div>
   <script>
     (function () {
-      var files = ['../host/cutting.js', 'packing.js', 'beam-packing.js', 'production.js', 'session.js', 'panel.js'];
+      var files = ['../host/cutting.js', 'packing.js', 'beam-packing.js', 'production.js', 'session.js', '../shared/production-setup.js', '../shared/separation-plan.js', 'vendor/pdf-lib.min.js', 'pdf-inks.js', 'setup-ui.js', 'panel.js'];
       for (var i = 0; i < files.length; i++)
         document.write('<script src="' + files[i] + window.bytebaseAssetSuffix + '"><\/script>');
     }());

@@ -8,7 +8,7 @@ for(const file of ['client/production.js','client/packing.js','host/cutting.js']
 }
 const old=require('../artifacts/packing-baseline/client/production.js'),current=require('../client/production.js');
 const fixtures=require('../tests/packing-fixtures.js'),validate=require('../tests/plan-invariants.js'),rows=[];
-function measure(api,input){const started=performance.now(),plan=api.planProduction(structuredClone(input));validate(plan,input);
+function measure(api,input){const started=performance.now(),plan=api.planProduction(structuredClone(input));validate(plan,input,{legacy:api===old});
   return {ms:Math.round(performance.now()-started),cutBoxPct:plan.areaPct,artworkPct:plan.artworkAreaPct,
     copies:plan.totalCopies,runs:plan.sheets[0].printingRuns,excess:plan.totalOverproduction,diagnostics:plan.searchDiagnostics,plan};}
 for(const input of fixtures){

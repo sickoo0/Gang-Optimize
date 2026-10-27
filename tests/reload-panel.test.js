@@ -94,6 +94,11 @@ assert.deepEqual(written,[
   '<script src="beam-packing.js?bytebaseReload=123"></script>',
   '<script src="production.js?bytebaseReload=123"></script>',
   '<script src="session.js?bytebaseReload=123"></script>',
+  '<script src="../shared/production-setup.js?bytebaseReload=123"></script>',
+  '<script src="../shared/separation-plan.js?bytebaseReload=123"></script>',
+  '<script src="vendor/pdf-lib.min.js?bytebaseReload=123"></script>',
+  '<script src="pdf-inks.js?bytebaseReload=123"></script>',
+  '<script src="setup-ui.js?bytebaseReload=123"></script>',
   '<script src="panel.js?bytebaseReload=123"></script>'
 ]);
 console.log('PASS: development-only reload, saved jobs/settings/plan, JSX refresh, failure retention and cache-busted HTML assets');
