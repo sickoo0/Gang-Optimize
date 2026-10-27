@@ -11,9 +11,9 @@ Panelet har nu **04 — Production Setup** og **05 — Export & Validation**. Pa
 1. Vælg **MASCOT — Single Frame**, **Generic — Simple** eller en gemt firmaprofil i sektion 04.
 2. Importér PDF'erne og beregn layoutet som hidtil. PDF-farveressourcer læses automatisk efter målingen. **Read PDF ink candidates** kører analysen igen.
 3. Kontrollér de faktisk anvendte farver i alle kilde-PDF'er. Ressourcer kan være ubrugte eller tilhøre andre sider; analysen giver kandidater, ikke en godkendt separationsliste. Ret listen, én farve pr. linje, og bekræft kontrollen.
-4. Flyt almindelige farver med træk/slip eller pile. MASCOT låser White-BG næstsidst og Lim sidst, når de findes. De tilføjes aldrig automatisk, hvis de mangler.
+4. Flyt almindelige farver med træk/slip eller pile. MASCOT låser White-BG næstsidst og Lim sidst, når de findes. Der tilføjes ikke en ramme for en farve, som ikke er bekræftet i kilde-PDF'erne.
 5. Vælg **Full sequence** eller **Current frame**. Eksempel: `1/5 280c  2/5 485c  3/5 7616c  4/5 hvid  5/5 lim`.
-6. Tryk **Create working Illustrator layout** i sektion 03. Hvis inkene ikke er bekræftet, fører panelet dig til verificeringen i sektion 04; oprettelsen starter først, når listen er bekræftet. Dokumentet indeholder linkede originaler, sorte proof-mærker, tekst som vektorkonturer og en separat ikke-printende guide-layer. Kontrollér og gem AI-filen i Illustrator.
+6. Tryk **Create working Illustrator layout** i sektion 03. Hvis inkene ikke er bekræftet eller en MASCOT-spotfarve har en forkert definition, viser panelet fejlen i sektion 04. Dokumentet indeholder linkede originaler, registreringsmærker og vektortekst i de tilsvarende 100 % spotfarver samt et separat ikke-printende guidelag. Kontrollér og gem AI-filen i Illustrator.
 7. **Update marks in active generated sheet** erstatter kun pluginets egne, uændrede produktionslag. Manuelle ændringer af mærker eller artwork udløser en fejl; opret et nyt arbejdsark i stedet.
 
 Avanceret opsætning indeholder profiloprettelse/kopiering/navngivning, JSON-import/eksport,
@@ -21,6 +21,12 @@ SVG-import, mærkemål/ankre/koordinater og tekst/skrifttype. JSON-editoren give
 gentagelser, referencespunkter, aliaser, farver, obligatoriske farver og eksponeringsplanens
 legend-regler. Profilen valideres ved gemning. Geometriændringer kræver ny layoutberegning;
 rene udseendeændringer beholder resultatet. Profiler og farver gemmes også uden importerede PDF'er.
+
+MASCOT kræver `White-BG` som Spot Color med CMYK-alternativ 0/0/0/40 og `Lim` som Spot Color
+med 0/0/100/0. Forhåndsvisningen bruger henholdsvis `#A7A9AC` og `#FFF200`. Alternativværdierne
+beskriver visningen, ikke procestyrken på en plade. Hvert nummereret tekstsegment bruger den
+tilsvarende spotfarve fra Illustrator med 100 % tint. Hvis en kilde-PDF importerer en spotfarve
+med forkert definition, stopper oprettelsen og viser forskellen. Original-PDF'en ændres ikke.
 
 SVG-import understøtter et kontrolleret udsnit: linjer, rektangler, cirkler og ellipser med
 viewBox og sort/ingen fyld/streg. Paths, CSS, grupper, transformationer, scripts og eksterne
@@ -33,7 +39,7 @@ godkendte InDesign/IDML-original. Tekstpreview bruger browserens fontmål; Illus
 de faktiske konturer. Mærker og reserverede felter bruger samme mm-geometri begge steder.
 
 **RIP-eksport er deaktiveret.** JSON-manifestet er en plan med farverækkefølge og mærker pr.
-ramme, ikke en eksponeringsfil. Sort proof-artwork må ikke bruges som en færdig all-plate-separation.
+ramme, ikke en eksponeringsfil. Spotfarvet arbejdsark er endnu ikke en valideret RIP-separation.
 Se [arkitektur, profilformat, test og produktionsbegrænsninger](docs/PRODUCTION_SETUP.md).
 
 ## Installation på Windows (Illustrator 2025/2026)
@@ -114,7 +120,7 @@ Efter benchmarken kan `npm run test:illustrator:packing` på Windows kontrollere
 
 - Automatisk godkende faktisk anvendte PDF-spotfarver eller **Esko print order**. Farveressourcer læses som kandidater og kræver manuel kontrol.
 - Optimere farvefællesskab, trykkørsler efter faktisk setup/materiale/ink-omkostning eller kroner.
-- Genbruge/strukturere eksisterende spotseparationer, trapping, White-BG og Lim til produktion.
+- Eksportere og validere de enkelte spotseparationer og trapping til produktion.
 - Godkende de genererede registreringsmærker og ramme-legend til den konkrete RIP. Arbejdsark med mærker og tekst er implementeret.
 - Eksportere **én flersidet PDF med 100% K per ramme**, herunder hvid og lim sidst.
 - Split-frame-optimering.

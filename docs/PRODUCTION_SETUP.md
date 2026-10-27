@@ -24,6 +24,7 @@ row has different technical clearance across versions; compare artwork coverage 
 | `client/setup-ui.js` | Company profiles, mark/text editors, JSON advanced editor, SVG import/export, swatches, drag/reorder, verification and persistence |
 | `client/pdf-inks.js` | Read-only PDF object inspection using bundled pdf-lib 1.17.1 |
 | `client/vendor/` | Offline MIT-licensed pdf-lib bundle and license; no CDN or runtime install |
+| `host/spot-inks.jsx` | Reuse linked-PDF Illustrator Spot objects, check definitions and reject color conflicts |
 | `client/index.html`, `styles.css` | Sections 04/05 and compact production controls |
 | `client/panel.js`, `session.js` | Bridge payload, shared preview overlay, profile lifecycle and session v4 migration |
 | `host/production-artwork.jsx` | Installed-font check, exact vector paths, outlined labels, isolated layers and transactional updates |
@@ -68,16 +69,17 @@ supported primitives; arbitrary SVG support is not claimed.
 
 Text has a reserved rectangle, PostScript font name, pt size, alignment, 0°/90° orientation,
 prefix/suffix/separator, `{index}/{total} {ink}` format, display colors and optional job/sheet/run
-metadata. Full/current mode controls the working legend. `legend: "repeat"` repeats the selected
-legend on each planned separation; `"per-ink"` assigns each component to its corresponding
-frame in the manifest. Font substitution is forbidden; overflowing text fails before replacing
+metadata. Full/current mode controls the working legend. Every planned frame's manifest label
+contains only its own ink entry. The composite working sheet assigns each visible legend character
+to its corresponding source Spot object at 100% tint, then outlines the text. Production marks are
+duplicated at identical coordinates in each matching 100% Spot color. Font substitution is forbidden; overflowing text fails before replacing
 existing layers. The output uses vector outlines. Browser glyph metrics are approximate;
 the reserved coordinates are shared and Illustrator checks actual outlined bounds.
 
 Ink aliases are exact, one-step mappings. Only unambiguous numeric Pantone C/U spelling variants
 normalize together; C and U remain distinct. No licensed Pantone database is bundled. Display
 swatches use available type-2 Separation tint-function endpoints in DeviceRGB/DeviceCMYK,
-profile colors, or neutral gray. MASCOT White-BG is white with a border, Lim is yellow.
+profile colors, or neutral gray. MASCOT White-BG is `#A7A9AC`, Lim is `#FFF200`.
 Swatches never modify PDF artwork. Ordinary inks can be dragged or moved with arrow buttons;
 the profile's tail order is applied last when locked. Required missing inks warn or block.
 
@@ -91,9 +93,10 @@ Printable boundary strokes reserve their four edges, not their entire interior.
 
 Host layers are `BYTEBASE - LINKED PDF ARTWORK`, `BYTEBASE - REGISTRATION MARKS`,
 `BYTEBASE - FRAME TEXT`, `BYTEBASE - PRINT GUIDES`. The last layer has `printable=false`.
-Black marks and text are proof artwork; they are NOT registration-color separations.
-The working document contains all configured physical marks; the manifest filters frame-specific
-marks by the explicit frame assignment. Common registration paths are reused identically.
+The working document contains all configured physical marks, each on its intended named spot ink;
+the manifest filters frame-specific marks by the explicit frame assignment. Common registration
+paths are reused identically. These spot objects make the editable working sheet inspectable;
+they do not validate separated RIP output. Nonprinting guides remain on their own layer.
 
 Update works only on an owned generated document with the same layout and unmodified source
 layer. Recursive fingerprints include paths/control points, fills/strokes, opacity, bounds,
@@ -119,6 +122,18 @@ can contain process images/complex tint functions/transparency, and resources fr
 can be present. Unsupported, encrypted, malformed or over-limit PDFs explicitly require manual
 verification. Limits: 50 MB, 100,000 visited objects, nesting depth 80. A manually verified list
 is required before production artwork is generated. This is not a separation-use validator.
+
+The MASCOT profile fixes `White-BG` at a CMYK alternate of 0/0/0/40 and `Lim` at 0/0/100/0;
+both must be Illustrator Spot Colors with those exact names. Its tail ordering is mandatory.
+Existing linked-PDF spots are reused if their definitions match. Wrong definitions and conflicting
+same-name alternatives fail preflight without rewriting source artwork or fabricating a process
+color. A missing MASCOT spot may be created only when the manually verified PDF candidate carries
+the exact required CMYK alternate. Other company profiles can specify their own spot definitions.
+
+On the current three imported development PDFs, Illustrator exposes `White-BG` with 0/0/0/0 and
+`Lim` as an RGB-kind spot. The MASCOT profile therefore rejects this set until the spot definitions
+are corrected in approved source artwork or another explicitly approved production profile is used.
+Their names alone are insufficient for MASCOT acceptance.
 
 References: [Adobe PDF reference, color spaces](https://opensource.adobe.com/dc-acrobat-sdk-docs/pdfstandards/pdfreference1.4.pdf),
 [pdf-lib parser source](https://github.com/Hopding/pdf-lib/blob/master/src/core/parser/PDFParser.ts).
@@ -213,3 +228,25 @@ The optimizer, beam search, quantity planner, host placement geometry and cuttin
 also confirmed unchanged against baseline `75a0f2b`. Syntax checks and `git diff --check`
 passed. The physical calibration, native Save dialog, saved-AI reopening and actual separation
 validation requirements above remain outstanding.
+
+### MASCOT spot-color update, 27 October 2026
+
+The working Illustrator document now assigns every outlined legend entry to its source Spot
+object at 100% tint. Production registration marks are repeated at identical coordinates in
+each frame's Spot color. MASCOT enforces the exact CMYK alternate values, preview colors and
+White-BG/Lim tail order. A mismatched existing spot or contradictory PDF alternate fails before
+production layers are committed; no linked source PDF is modified.
+
+The current development-machine rerun passed `npm test` (20 tests),
+`npm run test:browser` (9 scenarios), `npm run benchmark:packing` (8 datasets), and
+`npm run test:illustrator:packing` (5 real Illustrator cases). The production Illustrator
+integration passed 35 checks with five actual source Spot objects: exact special definitions,
+100% matching source spots in all legend entries and registration marks, no process color in
+generated production layers, renumbering after reorder, gated creation of a missing special,
+mismatch rejection, rollback and unchanged fixture PDF hash. The live CEP debugger reloaded the panel without recorded runtime
+errors and preserved three jobs and a 22-placement layout. Clicking Create with these PDFs
+reported the White-BG and Lim alternate-definition mismatches before generating a document.
+
+Remaining acceptance requires approved source PDFs with matching special-ink definitions,
+known-good separated output/reference PDFs, physical MASCOT template calibration, and saved-AI
+reopen/print checks. The working AI sheet is editable, but RIP exposure export remains disabled.

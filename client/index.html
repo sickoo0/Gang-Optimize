@@ -119,15 +119,15 @@
           <p class="helper">Edit sheet, marks, repetitions, anchors, SVG assets, text/font, aliases, tail rules and export preferences. Save validates the entire profile. Geometry changes require recalculation. Text uses an installed PostScript font name; Illustrator rejects missing fonts and overflowing labels.</p>
           <div class="inline-actions"><button id="saveProfile" class="btn secondary">Validate &amp; save</button><button id="resetProfile" class="btn secondary">Reset profile</button></div>
         </details>
-        <p id="inkReports" class="helper production-report"></p><p id="productionValidation" class="helper production-report" role="status"></p>
+        <p id="inkReports" class="helper production-report"></p><p id="productionValidation" class="helper production-report" role="status" tabindex="-1"></p>
         <button id="applyProduction" class="btn outline full">Update marks in active generated sheet</button>
       </section>
       <section class="section">
         <div class="section-title"><span class="step">05</span><h2>Export &amp; Validation</h2></div>
-        <p class="helper">Working Illustrator sheet: linked artwork, black proof marks, outlined frame text, ink metadata and nonprinting guides. Save the AI document in Illustrator after inspection.</p>
+        <p class="helper">Working Illustrator sheet: linked artwork, spot-colored registration marks, outlined frame text, ink metadata and nonprinting guides. Save the AI document in Illustrator after inspection.</p>
         <button id="exportManifest" class="btn secondary full">Export working-sheet manifest</button>
         <button class="btn outline full" disabled>RIP separation export · not validated</button>
-        <p class="helper">No exposure PDF is generated. Black proof marks are not verified registration separations. Original MASCOT template calibration and an approved separation pipeline remain required.</p>
+        <p class="helper">No exposure PDF is generated. Working registration marks and frame text use the named spot colors; their separated output is not yet validated. Original MASCOT template calibration and an approved separation pipeline remain required.</p>
       </section>
       <div id="status" class="status" role="status">Ready. Choose a folder of production PDFs.</div>
     </main>

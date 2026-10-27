@@ -21,7 +21,10 @@
               if(values.length===(space==='DeviceCMYK'?4:3)&&values.every(function(n){return Number.isFinite(n)&&n>=0&&n<=1;}))alternate={space:space==='DeviceCMYK'?'CMYK':'RGB',values:values};
             }
           }
-          list.forEach(function(n){var ink=name(lookup(n));if(ink&&ink!=='None'&&ink!=='All'&&!inks.has(ink))inks.set(ink,{name:ink,alternate:alternate,source:'PDF '+type+' color-space candidate'});});
+          list.forEach(function(n){var ink=name(lookup(n));if(!ink||ink==='None'||ink==='All')return;
+            if(inks.has(ink)){var previous=inks.get(ink),a=previous.alternate,b=alternate;if(a&&b&&(a.space!==b.space||JSON.stringify(a.values)!==JSON.stringify(b.values)))previous.conflict=true;else if(!a&&b)previous.alternate=b;}
+            else inks.set(ink,{name:ink,alternate:alternate,source:'PDF '+type+' color-space candidate'});
+          });
         }
         obj.asArray().forEach(function(v){visit(v,depth+1);});
       }else if(obj instanceof lib.PDFDict)obj.entries().forEach(function(pair){visit(pair[1],depth+1);});

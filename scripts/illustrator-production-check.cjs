@@ -16,24 +16,37 @@ const jsx=String.raw`#target illustrator
   function layer(name){return doc.layers.getByName('BYTEBASE - '+name);}
   try{
     app.userInteractionLevel=UserInteractionLevel.DONTDISPLAYALERTS;
-    doc=app.documents.add(DocumentColorSpace.CMYK,pt(50),pt(30));doc.artboards[0].artboardRect=[0,pt(30),pt(50),0];var box=doc.pathItems.rectangle(pt(30),0,pt(50),pt(30));box.stroked=false;box.filled=true;var fill=new CMYKColor();fill.cyan=60;fill.magenta=20;fill.yellow=0;fill.black=0;box.fillColor=fill;
+    doc=app.documents.add(DocumentColorSpace.CMYK,pt(50),pt(30));doc.artboards[0].artboardRect=[0,pt(30),pt(50),0];
+    var sourceInks=[['PANTONE 280 C',[100,90,0,20]],['PANTONE 485 C',[0,95,95,0]],['PANTONE 7616 C',[0,70,80,20]],['White-BG',[0,0,0,40]],['Lim',[0,0,100,0]]];
+    for(var fi=0;fi<sourceInks.length;fi++){try{var def=sourceInks[fi],spot=doc.spots.add(),c=new CMYKColor();c.cyan=def[1][0];c.magenta=def[1][1];c.yellow=def[1][2];c.black=def[1][3];spot.name=def[0];spot.colorType=ColorModel.SPOT;spot.color=c;
+      var patch=doc.pathItems.rectangle(pt(25),pt(fi*10),pt(10),pt(10)),inkFill=new SpotColor();inkFill.spot=spot;inkFill.tint=100;patch.stroked=false;patch.filled=true;patch.fillColor=inkFill;}catch(inner){throw Error('fixture spot '+fi+' '+def[0]+': '+inner+' line '+inner.line);}}
     var opts=new PDFSaveOptions();opts.preserveEditability=false;opts.viewAfterSaving=false;doc.saveAs(fixture,opts);doc.close(SaveOptions.DONOTSAVECHANGES);doc=null;
     // Save a byte-for-byte baseline before any plugin operations.
     fixture.copy(${JSON.stringify(path.join(dir,'fixture-before.pdf'))});
     var count=app.documents.length,result=invoke('createLayout');if(result.error)throw Error(result.error);doc=app.activeDocument;
     check(app.documents.length===count+1,'one new working document');check(doc.placedItems.length===plan.totalCopies,'all original linked placements');
     check(result.production.text==='1/5 280c  2/5 485c  3/5 7616c  4/5 hvid  5/5 lim','exact five-ink legend in real Illustrator');
+    var white=doc.spots.getByName('White-BG'),lim=doc.spots.getByName('Lim');
+    check(white.colorType===ColorModel.SPOT&&white.spotKind===SpotColorKind.SPOTCMYK&&white.color.cyan===0&&white.color.magenta===0&&white.color.yellow===0&&Math.abs(white.color.black-40)<0.1,'White-BG is the exact CMYK 0/0/0/40 spot');
+    check(lim.colorType===ColorModel.SPOT&&lim.spotKind===SpotColorKind.SPOTCMYK&&lim.color.cyan===0&&lim.color.magenta===0&&Math.abs(lim.color.yellow-100)<0.1&&lim.color.black===0,'Lim is the exact CMYK 0/0/100/0 spot');
+    function verifySpotArt(node,used){if(node.typename==='PathItem'){if(node.filled){var f=node.fillColor;if(f.typename!=='SpotColor'||Math.abs(f.tint-100)>0.001)throw Error('Process color or partial tint in production art');used[f.spot.name]=true;}if(node.stroked){var s=node.strokeColor;if(s.typename!=='SpotColor'||Math.abs(s.tint-100)>0.001)throw Error('Process stroke in production art');used[s.spot.name]=true;}return;}
+      if(node.typename==='GroupItem')for(var vi=0;vi<node.pageItems.length;vi++)verifySpotArt(node.pageItems[vi],used);else if(node.typename==='CompoundPathItem')for(var vi=0;vi<node.pathItems.length;vi++)verifySpotArt(node.pathItems[vi],used);}
+    var usedText={},usedMarks={};verifySpotArt(layer('FRAME TEXT').groupItems[0],usedText);verifySpotArt(layer('REGISTRATION MARKS').groupItems[0],usedMarks);
+    for(var si=0;si<sourceInks.length;si++){check(usedText[sourceInks[si][0]],'legend has 100% matching source spot '+sourceInks[si][0]);check(usedMarks[sourceInks[si][0]],'registration marks have 100% matching source spot '+sourceInks[si][0]);}
+    function countKeys(o){var n=0;for(var k in o)if(o.hasOwnProperty(k))n++;return n;}check(countKeys(usedText)===sourceInks.length&&countKeys(usedMarks)===sourceInks.length,'generated production layers introduce no process colors or extra ink names');
     check(layer('PRINT GUIDES').printable===false,'guides are nonprinting');check(layer('REGISTRATION MARKS').printable&&layer('FRAME TEXT').printable,'production layers are printable');
     var board=doc.artboards[0].artboardRect,g=BytebaseSetup.geometry(production.profile),maxError=0;
     var marks=layer('REGISTRATION MARKS').groupItems[0];
     for(var mi=0;mi<g.marks.length;mi++)for(var pi=0;pi<g.marks[mi].paths.length;pi++){
-      var expected=g.marks[mi].paths[pi],actual=marks.pathItems.getByName(g.marks[mi].id+' / '+pi);
+      var expected=g.marks[mi].paths[pi],actual=marks.pathItems.getByName(g.marks[mi].id+' / '+pi+' / PANTONE 280 C');
       for(var vi=0;vi<expected.vertices.length;vi++){var point=expected.vertices[vi].a,b=actual.pathPoints[vi].anchor;maxError=Math.max(maxError,Math.abs(b[0]-board[0]-pt(point[0])),Math.abs(b[1]-board[1]+pt(point[1])));}
     }
     check(maxError<0.01,'preview and Illustrator mark anchors match within 0.01 pt');report.maximumMarkErrorPt=maxError;report.textBounds=result.production.textBounds;
     var capture=new ImageCaptureOptions();capture.resolution=72;capture.antiAliasing=true;doc.imageCapture(File(${JSON.stringify(path.join(dir,'working-sheet.png'))}),board,capture);
     var source=BytebaseProductionArtwork.fingerprint(layer('LINKED PDF ARTWORK'),json),markSignature=BytebaseProductionArtwork.fingerprint(layer('REGISTRATION MARKS'),json),itemCount=doc.pageItems.length;
     result=invoke('updateProduction');check(!result.error,'repeat update succeeds: '+(result.error||'OK'));check(doc.pageItems.length===itemCount,'repeat generation does not duplicate objects');check(source===BytebaseProductionArtwork.fingerprint(layer('LINKED PDF ARTWORK'),json),'linked artwork bounds and transforms unchanged');check(markSignature===BytebaseProductionArtwork.fingerprint(layer('REGISTRATION MARKS'),json),'repeated marks have identical geometry');
+    var wrongWhite=new CMYKColor();wrongWhite.cyan=wrongWhite.magenta=wrongWhite.yellow=wrongWhite.black=0;white.color=wrongWhite;result=invoke('updateProduction');check(!!result.error&&result.error.indexOf('White-BG source Spot Color does not match')>=0,'mismatched White-BG source spot is rejected without replacement');var correctWhite=new CMYKColor();correctWhite.cyan=correctWhite.magenta=correctWhite.yellow=0;correctWhite.black=40;white.color=correctWhite;
+    production.inks=['485c','280c','7616c','White-BG','Lim'];result=invoke('updateProduction');check(!result.error&&result.text.indexOf('1/5 485c  2/5 280c')===0,'ink reordering renumbers the spot-colored legend');production.inks=['280c','485c','7616c','White-BG','Lim'];
     production.profile.text.mode='current';production.options.frame=4;result=invoke('updateProduction');check(!result.error&&result.text==='5/5 lim','current-frame mode includes Lim');
     production.profile.text.align='center';result=invoke('updateProduction');check(!result.error&&Math.abs(result.textBounds.x-(20+(660-result.textBounds.w)/2))<0.001,'center alignment matches reserved area');production.profile.text.align='left';
     production.profile.text.rotation=90;production.profile.text.width=80;production.profile.text.y=-100;result=invoke('updateProduction');check(!result.error&&result.textBounds.h>result.textBounds.w,'vertical text is outlined without scaling');production.profile.text.rotation=0;production.profile.text.width=660;production.profile.text.y=-15;
@@ -44,6 +57,13 @@ const jsx=String.raw`#target illustrator
     layer('REGISTRATION MARKS').groupItems[0].pathItems[0].translate(1,0);result=invoke('updateProduction');check(!!result.error&&result.error.indexOf('manually edited')>=0,'manual mark edits are preserved and update rejected');
     doc.close(SaveOptions.DONOTSAVECHANGES);doc=null;
     production.profile.text.font='BYTEBASE-Nonexistent-Font';result=invoke('createLayout');check(!!result.error&&app.documents.length===count,'failed generation leaves no partial document');
+    doc=app.documents.add(DocumentColorSpace.CMYK,pt(20),pt(20));var created=[];
+    var candidate={name:'White-BG',source:'PDF Separation color-space candidate',alternate:{space:'CMYK',values:[0,0,0,0.4]}};
+    var resolved=BytebaseSpotInks.resolve(doc,[candidate],production.profile,created,json),made=resolved.spots['White-BG'];
+    check(created.length===1&&made.colorType===ColorModel.SPOT&&made.spotKind===SpotColorKind.SPOTCMYK&&Math.abs(made.color.black-40)<0.1,'missing MASCOT special creates exact Spot Color from matching PDF candidate');
+    var badCandidate={name:'Lim',source:'PDF Separation color-space candidate',alternate:{space:'CMYK',values:[0,0,0,0]}};
+    var rejected=false;try{BytebaseSpotInks.resolve(doc,[badCandidate],production.profile,created,json);}catch(expected){rejected=String(expected).indexOf('No matching source Spot Color')>=0;}
+    check(rejected,'missing MASCOT special rejects mismatched PDF candidate');doc.close(SaveOptions.DONOTSAVECHANGES);doc=null;
     report.passed=true;
   }catch(e){report.error=String(e)+' (line '+e.line+')';}
   finally{if(doc)try{doc.close(SaveOptions.DONOTSAVECHANGES);}catch(ignore){}if(original)try{original.activate();}catch(ignore2){}app.userInteractionLevel=interaction;var out=File(${JSON.stringify(output)});out.encoding='UTF-8';out.open('w');out.write(json(report));out.close();}

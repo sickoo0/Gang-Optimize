@@ -198,6 +198,9 @@ try {
   await createPage.locator('#applyInkNames').click();
   await createPage.locator('#verifyInks').check();
   assert.equal(await createPage.locator('#frameLegend').innerText(),'1/5 280c  2/5 485c  3/5 7616c  4/5 hvid  5/5 lim');
+  assert.equal(await createPage.locator('#lockSpecialInks').isDisabled(),true,'MASCOT special order is fixed');
+  assert.match((await createPage.locator('#inkSequence').innerText()),/White-BG.*4\/5 hvid[\s\S]*Lim.*5\/5 lim/);
+  assert.deepEqual(await createPage.locator('#inkSequence .ink-swatch').evaluateAll(nodes=>nodes.slice(-2).map(n=>getComputedStyle(n).backgroundColor)),['rgb(167, 169, 172)','rgb(255, 242, 0)']);
   await createPage.locator('#create').click();
   await createPage.waitForFunction(() => document.querySelector('#status').textContent.startsWith('Created and verified '), null, { timeout: 3000 });
   const bridgeCalls = await createPage.evaluate(() => window.__bridgeCalls);
@@ -205,7 +208,9 @@ try {
   const payload = /^Bytebase\.createLayout\("([^"]+)"\)$/.exec(bridgeCalls[0]);
   assert.ok(payload, 'the CEP bridge receives a createLayout request');
   assert.equal(JSON.parse(decodeURIComponent(payload[1])).layout.totalCopies, actualPreview.plan.totalCopies);
-  assert.equal(JSON.parse(decodeURIComponent(payload[1])).production.options.verified,true);
+  const creation=JSON.parse(decodeURIComponent(payload[1]));assert.equal(creation.production.options.verified,true);
+  assert.deepEqual(creation.production.profile.inks.spots['White-BG'].values,[0,0,0,40]);
+  assert.deepEqual(creation.production.profile.inks.spots.Lim.values,[0,0,100,0]);
   const originalLayout=await createPage.evaluate(()=>JSON.stringify(JSON.parse(localStorage.getItem('com.bytebase.gangoptimizer.session.v1')).latest));
   await createPage.locator('#frameTextMode').selectOption('current');
   await createPage.locator('#currentFrame').selectOption('4');

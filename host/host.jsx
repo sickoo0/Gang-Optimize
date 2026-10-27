@@ -9,6 +9,7 @@
 #include "geometry.js"
 #include "cutting.js"
 #include "../shared/production-setup.js"
+#include "spot-inks.jsx"
 #include "production-artwork.jsx"
 #include "json-read.js"
 // evalFile runs this file in its own scope during Reload Panel. Reuse the

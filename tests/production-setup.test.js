@@ -32,8 +32,23 @@ test('restricted SVG vectors preserve proportions and reject unsafe input',()=>{
 });
 test('legend assignment, missing optional inks and display-only color',()=>{
   const p=S.defaults()[0];p.text.legend='per-ink';let r=S.compose(p,['280c','Lim']);assert.equal(r.frames[1].label.text,'2/2 lim');assert.equal(r.frames[0].marks.length,r.frames[1].marks.length);
-  assert.equal(r.sequence[1].color,'#ffff00');assert.equal(S.swatch({name:'x',alternate:{space:'CMYK',values:[1,0,0,0]}},p),'#00ffff');
+  assert.equal(r.sequence[1].color,'#FFF200');assert.equal(S.swatch({name:'x',alternate:{space:'CMYK',values:[1,0,0,0]}},p),'#00ffff');
   assert.equal(S.compose(p,['280c']).sequence.length,1);
+});
+test('MASCOT special spots retain exact definitions and multi-color logos yield unique ordered frames',()=>{
+  const p=S.defaults()[0];assert.deepEqual(p.inks.spots['White-BG'],{space:'CMYK',values:[0,0,0,40]});
+  assert.deepEqual(p.inks.spots.Lim,{space:'CMYK',values:[0,0,100,0]});
+  assert.equal(p.inks.colors['White-BG'],'#A7A9AC');assert.equal(p.inks.colors.Lim,'#FFF200');
+  const names=['PANTONE 356 C','PANTONE 360 C','PANTONE 152 C','PANTONE 356 C','PANTONE 299 C','Lim','White-BG'];
+  let r=S.compose(p,names,null,{verified:true});assert.deepEqual(r.sequence.map(i=>i.name),['PANTONE 356 C','PANTONE 360 C','PANTONE 152 C','PANTONE 299 C','White-BG','Lim']);
+  assert.equal(r.label.text,'1/6 356c  2/6 360c  3/6 152c  4/6 299c  5/6 hvid  6/6 lim');
+  assert.deepEqual(r.frames.map(f=>f.label.text),['1/6 356c','2/6 360c','3/6 152c','4/6 299c','5/6 hvid','6/6 lim']);
+  r=S.compose(p,['Lim','White-BG','PANTONE 299 C','PANTONE 356 C'],null,{verified:true});assert.equal(r.label.text,'1/4 299c  2/4 356c  3/4 hvid  4/4 lim');
+  const old=S.defaults()[0];delete old.inks.spots;old.inks.colors['White-BG']='#ffffff';assert.equal(S.validate(old).inks.colors['White-BG'],'#A7A9AC');
+  const wrong=S.compose(p,[{name:'White-BG',alternate:{space:'CMYK',values:[0,0,0,0]}},{name:'Lim',alternate:{space:'RGB',values:[1,1,0]}}],null,{verified:true});
+  assert.match(wrong.errors.join(' '),/White-BG.*differs/);assert.match(wrong.errors.join(' '),/Lim.*differs/);
+  const conflict=S.compose(p,[{name:'PANTONE 356 C',alternate:{space:'CMYK',values:[0,1,0,0]}},{name:'PANTONE 356 C',alternate:{space:'CMYK',values:[0,0,1,0]}}],null,{verified:true});
+  assert.match(conflict.errors.join(' '),/Conflicting PDF alternate/);
 });
 test('production settings survive empty sessions and v3 sessions migrate without losing jobs',()=>{
   const Session=require('../client/session'),state={jobs:[],productionSetup:{profiles:S.defaults(),selected:'mascot',inks:['Lim'],verified:true}};
