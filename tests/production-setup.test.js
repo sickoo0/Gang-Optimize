@@ -5,8 +5,8 @@ test('profiles validate, JSON round trip, migration and invalid settings',()=>{
   p.sheet.edge=400;assert.throws(()=>S.validate(p),/edge/);
 });
 test('exact MASCOT text, unique inks, aliases, tail and current frame',()=>{
-  const p=S.defaults()[0],inks=['280c','485c','7616c','White-BG','Lim'];
-  let r=S.compose(p,inks);assert.equal(r.label.text,'1/5 280c  2/5 485c  3/5 7616c  4/5 hvid  5/5 lim');
+  const p=S.defaults()[0],inks=['280c','485c','7416c','White-BG','Lim'];
+  let r=S.compose(p,inks);assert.equal(r.label.text,'1/5 280c  2/5 485c  3/5 7416c  4/5 hvid  5/5 lim');
   assert.equal(S.sequence(['Lim','White-BG','485c','280c','PANTONE 280 C'],p).inks.map(i=>i.label).join(','),'485c,280c,hvid,lim');
   p.text.mode='current';assert.equal(S.compose(p,inks,null,{frame:4}).label.text,'5/5 lim');
   for(const n of [1,2,12]){const list=Array.from({length:n},(_,i)=>`Ink ${i}`);assert.equal(S.compose(p,list).sequence.length,n);}

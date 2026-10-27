@@ -194,10 +194,10 @@ try {
   createSeed.proposals = actualPreview.plan.proposals;
   const { context: createContext, page: createPage } = await newPanel(JSON.stringify(createSeed), { bridgePlan: actualPreview.plan });
   assert.equal(await createPage.locator('#create').isDisabled(), false);
-  await createPage.locator('#inkNames').fill('280c\n485c\n7616c\nWhite-BG\nLim');
+  await createPage.locator('#inkNames').fill('280c\n485c\n7416c\nWhite-BG\nLim');
   await createPage.locator('#applyInkNames').click();
   await createPage.locator('#verifyInks').check();
-  assert.equal(await createPage.locator('#frameLegend').innerText(),'1/5 280c  2/5 485c  3/5 7616c  4/5 hvid  5/5 lim');
+  assert.equal(await createPage.locator('#frameLegend').innerText(),'1/5 280c  2/5 485c  3/5 7416c  4/5 hvid  5/5 lim');
   assert.equal(await createPage.locator('#lockSpecialInks').isDisabled(),true,'MASCOT special order is fixed');
   assert.match((await createPage.locator('#inkSequence').innerText()),/White-BG.*4\/5 hvid[\s\S]*Lim.*5\/5 lim/);
   assert.deepEqual(await createPage.locator('#inkSequence .ink-swatch').evaluateAll(nodes=>nodes.slice(-2).map(n=>getComputedStyle(n).backgroundColor)),['rgb(167, 169, 172)','rgb(255, 242, 0)']);

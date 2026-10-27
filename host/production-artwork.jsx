@@ -67,11 +67,18 @@ var BytebaseProductionArtwork = (function(){
         var runs=[],rebuilt='',entries=model.label.entries;for(i=0;i<entries.length;i++)runs.push({text:(i===0?model.label.prefix:t.separator)+entries[i].text+(i===entries.length-1?model.label.suffix:''),ink:entries[i].ink});
         for(i=0;i<runs.length;i++)rebuilt+=runs[i].text;if(rebuilt!==model.label.text||text.textRange.characters.length!==rebuilt.length)throw Error('Frame legend character mapping failed; no approximate colors were used');
         var charIndex=0;for(i=0;i<runs.length;i++)for(var ri=0;ri<runs[i].text.length;ri++)text.textRange.characters[charIndex++].characterAttributes.fillColor=spotColors[runs[i].ink];
-        var outlines=text.createOutline();outlines.name='Frame legend outlines';if(t.rotation===90)outlines.rotate(-90);
-        var foundInks={};function checkOutlined(item){if(item.typename==='PathItem'){if(item.filled){var ink=BytebaseSpotInks.colorOf(item);if(!ink||Math.abs(ink.tint-100)>0.001||!spotColors[ink.name])throw Error('Outlined frame text lost its 100% matching Spot Color');foundInks[ink.name]=true;}return;}
+        var outlines=text.createOutline();outlines.name='Frame legend outlines';
+        var foundInks={},inkBounds={};function checkOutlined(item){if(item.typename==='PathItem'){if(item.filled){var ink=BytebaseSpotInks.colorOf(item);if(!ink||Math.abs(ink.tint-100)>0.001||!spotColors[ink.name])throw Error('Outlined frame text lost its 100% matching Spot Color');foundInks[ink.name]=true;
+            var vb=item.visibleBounds,range=inkBounds[ink.name];if(!range)range=inkBounds[ink.name]={left:vb[0],top:vb[1],right:vb[2],bottom:vb[3]};else{range.left=Math.min(range.left,vb[0]);range.top=Math.max(range.top,vb[1]);range.right=Math.max(range.right,vb[2]);range.bottom=Math.min(range.bottom,vb[3]);}}
+          return;}
           if(item.typename==='GroupItem')for(var gi=0;gi<item.pageItems.length;gi++)checkOutlined(item.pageItems[gi]);
           else if(item.typename==='CompoundPathItem')for(var ci=0;ci<item.pathItems.length;ci++)checkOutlined(item.pathItems[ci]);}
-        checkOutlined(outlines);for(i=0;i<entries.length;i++)if(!foundInks[entries[i].ink])throw Error('No outlined legend geometry for '+entries[i].ink);
+        checkOutlined(outlines);var priorInkBounds=null,expectedTextInks={};for(i=0;i<entries.length;i++){var entryInk=entries[i].ink,entryBounds=inkBounds[entryInk];expectedTextInks['$'+entryInk]=true;
+          if(!foundInks[entryInk]||!entryBounds)throw Error('No outlined legend geometry for '+entryInk);
+          if(priorInkBounds&&entryBounds.left<priorInkBounds.right-0.01)throw Error('Outlined frame legend segments overlap or are out of ink order at '+entryInk);
+          priorInkBounds=entryBounds;}
+        for(var usedInk in foundInks)if(foundInks.hasOwnProperty(usedInk)&&(!inkBounds[usedInk]||!expectedTextInks['$'+usedInk]))throw Error('Outlined frame legend contains unexpected ink '+usedInk);
+        if(t.rotation===90)outlines.rotate(-90);
         var actual=boundsMM(outlines,board);if(actual.w>tb.w+0.001||actual.h>tb.h+0.001)throw Error('Frame text does not fit reserved area. Increase the label area or reduce font size; artwork was not scaled.');
         var dx=0;if(t.rotation!==90){if(t.align==='center')dx=(tb.w-actual.w)/2;else if(t.align==='right')dx=tb.w-actual.w;}
         outlines.translate(pt(tb.x+dx-actual.x),-pt(tb.y-actual.y));textBounds=boundsMM(outlines,board);

@@ -8,6 +8,7 @@
     "benchmark:packing": "node scripts/packing-comparison.cjs",
     "test:illustrator:packing": "node scripts/illustrator-packing-check.cjs",
     "test:illustrator:production": "node scripts/illustrator-production-check.cjs",
+    "test:illustrator:separations": "node scripts/illustrator-separation-regression.cjs",
     "test:browser": "node scripts/browser-preview.mjs",
     "test:all": "npm test && npm run test:browser",
     "debug:cep": "node scripts/cep-debug.mjs",
